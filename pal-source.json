@@ -1,0 +1,60 @@
+{
+  "name": "ACBS PAL Beta Track",
+  "identifier": "io.github.famsyk.acbs-beta-track-repo.pal",
+  "subtitle": "AltStore PAL本体向け・非公式ベータ追従",
+  "description": "公式PALソースを毎時確認します。公開ADPの情報を照合し、変更時にはiPhone用配布ファイル1件をハッシュ検証して掲載します。実機での導入は未検証です。",
+  "website": "https://github.com/famsyk/acbs-beta-track-repo",
+  "apps": [
+    {
+      "bundleIdentifier": "io.altstore.AltStore.Beta",
+      "marketplaceID": "6478868316",
+      "developerName": "Riley & Shane",
+      "iconURL": "https://cdn.altstore.io/file/altstore/images/altstore/altstore_liquid_glass_icon.png",
+      "tintColor": "018084",
+      "category": "utilities",
+      "appPermissions": {
+        "entitlements": [
+          {
+            "name": "com.apple.developer.marketplace.app-installation"
+          },
+          {
+            "name": "com.apple.security.application-groups"
+          },
+          {
+            "name": "com.apple.developer.siri"
+          }
+        ]
+      },
+      "name": "AltStore PAL Beta",
+      "subtitle": "PAL本体のベータ・非公式参照ソース",
+      "localizedDescription": "AltStore PAL本体用。認証なしに取得できた公式ADPを参照する非公式ソースです。アプリ本体・署名は改変しません。iPhoneでの更新成功は未確認です。Patreon特典の利用権を付与するものではありません。",
+      "versions": [
+        {
+          "version": "2.3.13",
+          "buildVersion": "88",
+          "marketingVersion": "2.3.3b (88)",
+          "date": "2026-06-23T17:00:00-04:00",
+          "localizedDescription": "• Improves Japanese translations (thanks @cizzuk!)\n• Improves Brazilian Portuguese translations (thanks @mvcmendes!)",
+          "localizedDescriptions": {
+            "en": "• Improves Japanese translations (thanks @cizzuk!)\n• Improves Brazilian Portuguese translations (thanks @mvcmendes!)",
+            "ja": "• 日本語の翻訳を改善（ありがとう @cizzuk!）\n• ブラジルポルトガル語の翻訳を改善（ありがとう @mvcmendes!）",
+            "pt-BR": "• Melhora as traduções em japonês (obrigado @cizzuk!)\n• Melhora as traduções em português do Brasil (obrigado @mvcmendes!)"
+          },
+          "downloadURL": "https://altstore.io/adps/altstore/2_3_3_b",
+          "size": 30365107,
+          "minOSVersion": "17.4"
+        }
+      ]
+    }
+  ],
+  "news": [],
+  "userInfo": {
+    "validationVersion": "1",
+    "manifestSHA256": "4c37a3b45e98137ef98afedb40a27bfa742166ea18b5762532cb80d179bbd316",
+    "signatureSHA256": "c37016896c42d693bb440ed9117aa4b404969606747bb0a5c337c5ee92ee30a4",
+    "deviceInstallation": "not-tested",
+    "appleSignatureTrust": "not-validated-by-this-script",
+    "sampleAsset": "variant/0a88c7f3-13d2-3ac4-8e1b-f7d4d06d9d41.ipa",
+    "sampleSHA256": "ad174381ec0d88b88a6185ddd4e01c2e4925803cc27ca0bff8c326c944c6b01d"
+  }
+}
