@@ -1,11 +1,9 @@
-name: Track AltStore Classic Beta
+name: Track PAL and Classic Betas
 
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/**'
-      - 'source.json'
+    paths: ['.github/**', 'source.json', 'pal-source.json', 'classic-source.json']
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
@@ -20,95 +18,71 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: main
           fetch-depth: 1
 
-      - name: Run offline validation tests
+      - name: Run all offline regression tests
         run: python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
 
-      - name: Fetch and verify the latest public beta
-        id: sync
+      - name: Verify both PAL packages and the separate Classic IPA
         shell: bash
         run: |
           set -euo pipefail
-          # Push/manual runs inspect the IPA again; scheduled runs reuse a verified hash.
           args=()
-          if [[ "$GITHUB_EVENT_NAME" != 'schedule' ]]; then
-            args+=(--verify-ipa)
-          fi
-          python3 -B .github/scripts/update_source.py "${args[@]}"
+          if [[ "$GITHUB_EVENT_NAME" != 'schedule' ]]; then args+=(--force); fi
+          python3 -B .github/scripts/update_catalog.py "${args[@]}"
+          python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
 
-      - name: Publish verified source or periodic keepalive
-        if: ${{ !cancelled() && (steps.sync.outcome == 'success' || steps.sync.outcome == 'failure') }}
+      - name: Publish all catalogs in one commit
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- source.json
-          now=$(date +%s)
-          last=$(git log -1 --format=%ct)
+          git add -- source.json pal-source.json classic-source.json
           if ! git diff --cached --quiet; then
-            git commit -m 'Update verified AltStore Classic beta source'
-          elif (( now - last >= 2592000 )); then
-            # A monthly repository heartbeat avoids the 60-day idle cutoff.
-            git commit --allow-empty -m 'Keep the beta tracker scheduled'
+            git commit -m 'Update verified PAL and Classic beta catalogs'
+          elif (( $(date +%s) - $(git log -1 --format=%ct) >= 2592000 )); then
+            git commit --allow-empty -m 'Keep beta tracking active'
           else
-            echo 'No source change and no keepalive needed.'
             exit 0
           fi
-          # Do not force-push: a concurrent human edit must never be overwritten.
+          # Never overwrite concurrent edits with a force push.
           git push origin HEAD:main
 
-      - name: Verify the public source URL
+      - name: Verify both public PAL URLs and the separate IPA URL
         shell: bash
         run: |
-          python3 - <<'PY'
-          import json, os, time, urllib.request
+          python3 -B - <<'PY'
+          import json, os, sys, time, urllib.request
           from pathlib import Path
-          expected = json.loads(Path('source.json').read_text())
-          url = f"https://raw.githubusercontent.com/{os.environ['GITHUB_REPOSITORY']}/main/source.json"
-          for attempt in range(16):
-              try:
-                  request = urllib.request.Request(url, headers={'Cache-Control': 'no-cache', 'User-Agent': 'acbs-beta-track-repo/1.0'})
-                  with urllib.request.urlopen(request, timeout=30) as response:
-                      if response.status != 200:
-                          raise ValueError(f'HTTP {response.status}')
-                      published = json.load(response)
-                  if published['identifier'] != expected['identifier']:
-                      raise ValueError('Unexpected source identifier')
-                  want = expected['apps'][0]['versions'][0]
-                  got = published['apps'][0]['versions'][0]
-                  if any(got.get(k) != want.get(k) for k in ('version', 'buildVersion', 'sha256', 'size')):
-                      raise ValueError('GitHub CDN still serves the previous version')
-                  print(f"Public URL OK: HTTP 200, valid JSON, {got['version']} ({got['buildVersion']})")
-                  print(url)
-                  break
-              except Exception as exc:
-                  if attempt == 15:
-                      raise
-                  print(f'Waiting for public source propagation: {exc}', flush=True)
-                  time.sleep(20)
-          PY
-
-      - name: Record currently published version
-        if: ${{ always() }}
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          p = Path('source.json')
-          if p.exists():
-              v = json.loads(p.read_text())['apps'][0]['versions'][0]
-              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-                  out.write('## AltStore Classic beta source\n\n')
-                  out.write('Source entry: ' + str(v['version']) + ' (' + str(v.get('buildVersion', '?')) + ')\n\n')
-                  out.write('SHA-256: `' + v['sha256'] + '`\n\n')
-                  out.write('Only source metadata is published. IPA stays on the official CDN.\n')
+          sys.path.insert(0, '.github/scripts')
+          from update_catalog import OUTPUTS, validate_pal
+          for name in OUTPUTS:
+              expected = json.loads(Path(name).read_text())
+              url = f"https://raw.githubusercontent.com/{os.environ['GITHUB_REPOSITORY']}/main/{name}"
+              for attempt in range(16):
+                  try:
+                      req = urllib.request.Request(url, headers={'Cache-Control':'no-cache', 'User-Agent':'acbs-catalog/2.0'})
+                      with urllib.request.urlopen(req, timeout=30) as response:
+                          if response.status != 200:
+                              raise ValueError(f'HTTP {response.status}')
+                          actual = json.load(response)
+                      if actual != expected:
+                          raise ValueError('GitHub CDN still has older content')
+                      if name != 'classic-source.json':
+                          validate_pal(actual)
+                      versions = [a['name'] + ': ' + a['versions'][0].get('marketingVersion', a['versions'][0]['version']) for a in actual['apps']]
+                      print('PUBLIC_URL_OK: HTTP 200, valid JSON, '+name+' | '+', '.join(versions), flush=True)
+                      break
+                  except Exception as exc:
+                      if attempt == 15:
+                          raise
+                      print(f'Waiting for {name}: {exc}', flush=True)
+                      time.sleep(15)
           PY

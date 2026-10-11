@@ -1,0 +1,44 @@
+{
+  "name": "ACBS Classic IPA Beta (PAL非対応)",
+  "identifier": "io.github.famsyk.acbs-beta-track-repo.classic-ipa",
+  "subtitle": "AltStore Classic Beta・非公式追従ソース",
+  "description": "公式ソースを毎時確認する非公式ソース。検証できた最新の公開CDN版IPAを参照します。AltStore PAL非対応。",
+  "website": "https://github.com/famsyk/acbs-beta-track-repo",
+  "apps": [
+    {
+      "name": "AltStore Classic Beta",
+      "bundleIdentifier": "com.rileytestut.AltStore.Beta",
+      "developerName": "Riley Testut",
+      "subtitle": "公式CDNのベータ版を追従",
+      "localizedDescription": "AltStore Classic専用の非公式ソース。IPAは公式CDNから直接取得し、本体の改変・再配布は行いません。公開URLで取得・検証できる版のみ掲載します。インストールと署名更新はAltStore側で行ってください。",
+      "iconURL": "https://user-images.githubusercontent.com/705880/65270980-1eb96f80-dad1-11e9-9367-78ccd25ceb02.png",
+      "tintColor": "018084",
+      "category": "utilities",
+      "versions": [
+        {
+          "version": "2.3.1b",
+          "date": "2026-10-09T13:00:00-04:00",
+          "downloadURL": "https://cdn.altstore.io/file/altstore/apps/altstore/2_3_1_b.ipa",
+          "size": 40602347,
+          "sha256": "173534b619ed80cfd64396ef1d267a99d460b4cbc240b4d7b2d384d714df131f",
+          "buildVersion": "67",
+          "marketingVersion": "2.3.1b (67)",
+          "localizedDescription": "公式配布の2.3.1b（ビルド67）。アプリ本体の変更・再署名は行っていません。",
+          "minOSVersion": "17.4"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [
+          "aps-environment",
+          "com.apple.developer.siri",
+          "com.apple.security.application-groups",
+          "get-task-allow"
+        ],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "AltStore uses the local network to find and communicate with AltServer."
+        }
+      }
+    }
+  ],
+  "news": []
+}

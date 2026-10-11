@@ -27,7 +27,7 @@ class TrackerTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         self.ipa = self.root / 'beta.ipa'
-        self.output = self.root / 'source.json'
+        self.output = self.root / 'classic-source.json'
         self.info = {
             'CFBundleIdentifier': tracker.BUNDLE_ID,
             'CFBundleShortVersionString': '3.0b10',
@@ -246,8 +246,8 @@ class TrackerTests(unittest.TestCase):
 
     def test_seed_source_has_expected_repository_and_version_fields(self):
         root = Path(__file__).resolve().parents[2]
-        seed = json.loads((root / 'source.json').read_text())
-        self.assertEqual(seed['identifier'], 'io.github.famsyk.acbs-beta-track-repo')
+        seed = json.loads((root / 'classic-source.json').read_text())
+        self.assertEqual(seed['identifier'], 'io.github.famsyk.acbs-beta-track-repo.classic-ipa')
         version = seed['apps'][0]['versions'][0]
         for field in ('buildVersion', 'sha256', 'downloadURL', 'size'):
             self.assertIn(field, version)
