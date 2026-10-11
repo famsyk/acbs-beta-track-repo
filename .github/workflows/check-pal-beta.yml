@@ -1,76 +1,82 @@
-name: Check PAL beta distribution
+name: Track AltStore PAL Beta
 
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/check-pal-beta.yml']
+    paths:
+      - '.github/workflows/check-pal-beta.yml'
+      - '.github/scripts/update_pal_source.py'
+      - '.github/scripts/test_pal_source.py'
+      - 'pal-source.json'
+  schedule:
+    - cron: '37 * * * *'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+# Share the lock with the Classic tracker so neither overwrites concurrent work.
+concurrency:
+  group: acbs-beta-source
+  cancel-in-progress: false
 
 jobs:
-  inspect:
+  sync:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
-      - name: Inspect official PAL beta metadata and public ADP
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Run PAL validation tests
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_pal_source.py' -v
+
+      - name: Verify public PAL beta ADP and iPhone variant
+        run: python3 -B .github/scripts/update_pal_source.py
+
+      - name: Publish PAL source without touching Classic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- pal-source.json
+          if git diff --cached --quiet; then
+            echo 'PAL source is already current.'
+            exit 0
+          fi
+          git commit -m 'Update verified public AltStore PAL beta metadata'
+          git push origin HEAD:main
+
+      - name: Verify published PAL JSON URL
         shell: bash
         run: |
           python3 - <<'PY'
-          import hashlib, json, os, urllib.request, urllib.error
-          from urllib.parse import urlsplit
-
-          class OfficialRedirects(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self, req, fp, code, msg, headers, newurl):
-                  host = (urlsplit(newurl).hostname or '').lower()
-                  if urlsplit(newurl).scheme != 'https' or host not in {'altstore.io', 'cdn.altstore.io', 'f000.backblazeb2.com'}:
-                      raise ValueError('Redirect leaves the official distribution hosts: ' + host)
-                  return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-          opener = urllib.request.build_opener(OfficialRedirects())
-          def read(url, limit=4*1024*1024):
-              req = urllib.request.Request(url, headers={'User-Agent':'acbs-pal-public-check/1.0', 'Cache-Control':'no-cache'})
-              with opener.open(req, timeout=30) as response:
-                  data = response.read(limit+1)
-                  if len(data)>limit:
-                      raise ValueError('Metadata exceeds size limit')
-                  print('HTTP',response.status,url,'bytes',len(data),'type',response.headers.get('Content-Type'))
-                  return data
-
-          source = json.loads(read('https://cdn.altstore.io/file/altstore/marketplace.json'))
-          beta = next(a for a in source['apps'] if a.get('bundleIdentifier') == 'io.altstore.AltStore.Beta')
-          version = beta['versions'][0]
-          print('OFFICIAL_BETA',json.dumps({'marketplaceID':beta.get('marketplaceID'),'bundleIdentifier':beta['bundleIdentifier'],'version':version,'patreon':beta.get('patreon')},ensure_ascii=False))
-          base = version['downloadURL'].rstrip('/')
-          if base.endswith('/manifest.json'):
-              base = base[:-len('/manifest.json')]
-          if urlsplit(base).scheme != 'https' or urlsplit(base).hostname != 'altstore.io':
-              raise ValueError('Latest beta is not hosted on the expected public official domain')
-          results = {}
-          for name in ('manifest.json', 'signature'):
+          import json, os, time, urllib.request
+          from pathlib import Path
+          expected = json.loads(Path('pal-source.json').read_text())
+          url = f"https://raw.githubusercontent.com/{os.environ['GITHUB_REPOSITORY']}/main/pal-source.json"
+          for attempt in range(16):
               try:
-                  data = read(base+'/'+name)
-                  if name == 'manifest.json':
-                      manifest = json.loads(data)
-                      print('MANIFEST_FIELDS',json.dumps(manifest,ensure_ascii=False)[:18000])
-                      for key, expected in [('appleItemId',beta['marketplaceID']),('bundleId','io.altstore.AltStore'),('shortVersionString',version['version']),('bundleVersion',version['buildVersion'])]:
-                          if str(manifest.get(key)) != str(expected):
-                              raise ValueError('Manifest does not match source field '+key)
-                  else:
-                      if not data or data.lstrip().lower().startswith((b'<html',b'<!doctype')):
-                          raise ValueError('Signature missing or HTML response')
-                      print('SIGNATURE_SHA256',hashlib.sha256(data).hexdigest())
-                  results[name] = 'publicly retrieved; not an iOS installation test'
+                  request = urllib.request.Request(url, headers={'Cache-Control':'no-cache', 'User-Agent':'acbs-pal-beta-track/1.0'})
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      if response.status != 200:
+                          raise ValueError(f'HTTP {response.status}')
+                      published = json.load(response)
+                  if published != expected:
+                      raise ValueError('Published JSON does not yet match generated source')
+                  version = published['apps'][0]['versions'][0]
+                  print('PAL_PUBLIC_URL_OK: HTTP 200, valid JSON, ' + version.get('marketingVersion', version['version']))
+                  print(url)
+                  with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                      summary.write('\nPublic source URL verified: ' + url + '\n')
+                  break
               except Exception as exc:
-                  results[name] = type(exc).__name__+': '+str(exc)
-                  print('CHECK_FAILED',name,results[name])
-          print('RESULT',json.dumps(results,ensure_ascii=False))
-          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as summary:
-              summary.write('## PAL beta public distribution check\n\n')
-              summary.write('Official listing: '+str(version.get('marketingVersion',version['version']))+'\n\n')
-              summary.write('No Patreon credentials or user tokens were used. No app or existing source was modified.\n\n')
-              for name,result in results.items():
-                  summary.write('- '+name+': '+result+'\n')
-              summary.write('\nThis only tests public file availability, NOT successful installation, entitlement eligibility, or signature validity.\n')
+                  if attempt == 15:
+                      raise
+                  print('Waiting for public source: ' + str(exc), flush=True)
+                  time.sleep(20)
           PY
