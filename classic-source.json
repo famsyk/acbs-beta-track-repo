@@ -23,7 +23,7 @@
           "sha256": "173534b619ed80cfd64396ef1d267a99d460b4cbc240b4d7b2d384d714df131f",
           "buildVersion": "67",
           "marketingVersion": "2.3.1b (67)",
-          "localizedDescription": "公式配布の2.3.1b（ビルド67）。アプリ本体の変更・再署名は行っていません。",
+          "localizedDescription": "NEW\n\nRandomize Bundle IDs\n• New experimental feature in AltStore’s settings\n• Randomizes bundle IDs for sideloaded apps\n\nIMPROVED\n• Improved error messages for common Remote AltServer connection issues\n\nFIXED\n• Fixed 2FA codes not appearing when signing in (thanks @IgoSzaFIIT!)\n• Fixed \"BGTaskSchedulerErrorDomain error 3\" alert when setting up Remote AltServer on iOS 27+\n• Fixed apps not refreshing in background\n• Fixed asking to sign-in before setting up Remote AltServer",
           "minOSVersion": "17.4"
         }
       ],

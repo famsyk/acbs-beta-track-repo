@@ -1,44 +1,96 @@
 {
-  "name": "ACBS Beta Track",
+  "name": "ACBS PAL + Classic Beta",
   "identifier": "io.github.famsyk.acbs-beta-track-repo",
-  "subtitle": "AltStore Classic Beta・非公式追従ソース",
-  "description": "公式ソースを毎時確認する非公式ソース。検証できた最新の公開CDN版IPAを参照します。AltStore PAL非対応。",
-  "website": "https://github.com/famsyk/acbs-beta-track-repo",
+  "subtitle": "PAL用：PAL本体とClassicのベータ",
+  "description": "PALから導入する2種類のベータ。通常のIPAを混在させず、公式ADPのID・版・配布ファイルを検証して毎時追従します。実機の導入成功は未検証です。",
   "apps": [
     {
-      "name": "AltStore Classic Beta",
+      "bundleIdentifier": "io.altstore.AltStore.Beta",
+      "marketplaceID": "6478868316",
+      "developerName": "Riley & Shane",
+      "iconURL": "https://cdn.altstore.io/file/altstore/images/altstore/altstore_liquid_glass_icon.png",
+      "tintColor": "018084",
+      "category": "utilities",
+      "appPermissions": {
+        "entitlements": [
+          {
+            "name": "com.apple.developer.marketplace.app-installation"
+          },
+          {
+            "name": "com.apple.security.application-groups"
+          },
+          {
+            "name": "com.apple.developer.siri"
+          }
+        ]
+      },
+      "name": "AltStore PAL Beta",
+      "subtitle": "PALから導入・2.3.3b (88)",
+      "localizedDescription": "公式の公開ADPを参照します。アプリ本体や署名は改変しません。実機でのインストールは未検証です。",
+      "versions": [
+        {
+          "version": "2.3.13",
+          "buildVersion": "88",
+          "marketingVersion": "2.3.3b (88)",
+          "date": "2026-06-23T17:00:00-04:00",
+          "localizedDescription": "• Improves Japanese translations (thanks @cizzuk!)\n• Improves Brazilian Portuguese translations (thanks @mvcmendes!)",
+          "localizedDescriptions": {
+            "en": "• Improves Japanese translations (thanks @cizzuk!)\n• Improves Brazilian Portuguese translations (thanks @mvcmendes!)",
+            "ja": "• 日本語の翻訳を改善（ありがとう @cizzuk!）\n• ブラジルポルトガル語の翻訳を改善（ありがとう @mvcmendes!）",
+            "pt-BR": "• Melhora as traduções em japonês (obrigado @cizzuk!)\n• Melhora as traduções em português do Brasil (obrigado @mvcmendes!)"
+          },
+          "downloadURL": "https://altstore.io/adps/altstore/2_3_3_b",
+          "size": 30365107,
+          "minOSVersion": "17.4"
+        }
+      ]
+    },
+    {
       "bundleIdentifier": "com.rileytestut.AltStore.Beta",
-      "developerName": "Riley Testut",
-      "subtitle": "公式CDNのベータ版を追従",
-      "localizedDescription": "AltStore Classic専用の非公式ソース。IPAは公式CDNから直接取得し、本体の改変・再配布は行いません。公開URLで取得・検証できる版のみ掲載します。インストールと署名更新はAltStore側で行ってください。",
+      "marketplaceID": "6773950481",
+      "developerName": "Riley & Shane",
       "iconURL": "https://user-images.githubusercontent.com/705880/65270980-1eb96f80-dad1-11e9-9367-78ccd25ceb02.png",
       "tintColor": "018084",
       "category": "utilities",
-      "versions": [
-        {
-          "version": "2.3.1b",
-          "date": "2026-10-09T13:00:00-04:00",
-          "downloadURL": "https://cdn.altstore.io/file/altstore/apps/altstore/2_3_1_b.ipa",
-          "size": 40602347,
-          "sha256": "173534b619ed80cfd64396ef1d267a99d460b4cbc240b4d7b2d384d714df131f",
-          "buildVersion": "67",
-          "marketingVersion": "2.3.1b (67)",
-          "localizedDescription": "NEW\n\nRandomize Bundle IDs\n• New experimental feature in AltStore’s settings\n• Randomizes bundle IDs for sideloaded apps\n\nIMPROVED\n• Improved error messages for common Remote AltServer connection issues\n\nFIXED\n• Fixed 2FA codes not appearing when signing in (thanks @IgoSzaFIIT!)\n• Fixed \"BGTaskSchedulerErrorDomain error 3\" alert when setting up Remote AltServer on iOS 27+\n• Fixed apps not refreshing in background\n• Fixed asking to sign-in before setting up Remote AltServer",
-          "minOSVersion": "17.4"
-        }
-      ],
       "appPermissions": {
         "entitlements": [
-          "aps-environment",
-          "com.apple.developer.siri",
-          "com.apple.security.application-groups",
-          "get-task-allow"
+          {
+            "name": "com.apple.security.application-groups"
+          },
+          {
+            "name": "com.apple.developer.siri"
+          }
         ],
-        "privacy": {
-          "NSLocalNetworkUsageDescription": "AltStore uses the local network to find and communicate with AltServer."
+        "privacy": [
+          {
+            "name": "LocalNetwork",
+            "usageDescription": "AltStore uses the local network to find and communicate with AltServer."
+          }
+        ]
+      },
+      "name": "AltStore Classic Beta",
+      "subtitle": "PALから導入・2.3rc (63)",
+      "localizedDescription": "公式の公開ADPを参照します。アプリ本体や署名は改変しません。実機でのインストールは未検証です。 PALで導入する版は2.3rc (63)です。IPA版の2.3.1bとは配布物が異なります。",
+      "versions": [
+        {
+          "version": "2.3.4",
+          "buildVersion": "63",
+          "marketingVersion": "2.3rc (63)",
+          "date": "2026-09-14T11:00:00-04:00",
+          "localizedDescription": "NEW\n\nRemote AltServer Onboarding\n• New in-app guide to easily set up on-device sideloading\n• Get started in seconds with easy to follow instructions\n• Tap “Set-Up Remote AltServer” in settings\n\nOn-Device Pairing (iOS 27+)\n• Install and sideload apps without ever touching a computer!\n• Set up remote AltServer without manually pairing with AltServer\n\nIMPROVED\n• Improved remote AltServer reliability\n• No longer need to restart app after pairing with remote AltServer\n• Ignores “Couldn’t reach remote AltServer” error when refreshing apps in background without VPN\n\nFIXED\n• Fixed crash when refreshing multiple apps with local AltServer",
+          "downloadURL": "https://altstore.io/adps/altstore-classic/2_3_rc",
+          "size": 22477794,
+          "minOSVersion": "17.4"
         }
-      }
+      ]
     }
   ],
-  "news": []
+  "news": [],
+  "userInfo": {
+    "catalogVersion": "2",
+    "classicIPALatest": "2.3.1b",
+    "deviceInstallation": "not-tested",
+    "appleSignatureTrust": "not-validated-by-this-script",
+    "checks": "{\"com.rileytestut.AltStore.Beta\": {\"manifestSHA256\": \"6289a57b46ce53a3069158d656951f4fcb68d6b1e97e9d89b2d4e9b461c27530\", \"sampleAsset\": \"variant/33e387f5-448f-35c2-a94f-99c5ed114c22.ipa\", \"sampleSHA256\": \"0392cee9c659877b472e9c60ffa4a4a945f02bc3453a63a81dea78324cb88a64\", \"signatureSHA256\": \"6d79abf43a1f5fc4097def4b4ad3c8ac8a141554830d9b88ce9eb7a235290210\"}, \"io.altstore.AltStore.Beta\": {\"manifestSHA256\": \"4c37a3b45e98137ef98afedb40a27bfa742166ea18b5762532cb80d179bbd316\", \"sampleAsset\": \"variant/0a88c7f3-13d2-3ac4-8e1b-f7d4d06d9d41.ipa\", \"sampleSHA256\": \"ad174381ec0d88b88a6185ddd4e01c2e4925803cc27ca0bff8c326c944c6b01d\", \"signatureSHA256\": \"c37016896c42d693bb440ed9117aa4b404969606747bb0a5c337c5ee92ee30a4\"}}"
+  }
 }
