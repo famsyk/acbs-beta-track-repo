@@ -105,8 +105,12 @@ def verify_manifest(manifest: dict, version: dict, spec: App) -> None:
             raise ValueError(f'{spec.name}: {key} expected {value}, got {manifest.get(key)}')
     if manifest.get('isLaunchProhibited') is not False:
         raise ValueError('ADP does not permit launch')
-    if 'marketplace' not in manifest.get('appInstallDeterminants', []):
-        raise ValueError('Not a marketplace ADP')
+    determinants = manifest.get('appInstallDeterminants')
+    if not isinstance(determinants, list) or not all(isinstance(x, str) for x in determinants):
+        raise ValueError('Invalid app install determinants')
+    # Ordinary notarized apps can have []; only PAL itself is a marketplace app.
+    if spec == APPS[0] and 'marketplace' not in determinants:
+        raise ValueError('PAL package is not a marketplace app')
     if not isinstance(manifest.get('variants'), list) or not manifest['variants']:
         raise ValueError('ADP has no variants')
 
@@ -172,8 +176,10 @@ def listing(app: dict, version: dict, spec: App, ipa_version: str) -> dict:
     note = '公式の公開ADPを参照します。アプリ本体や署名は改変しません。実機でのインストールは未検証です。'
     if spec == APPS[1]:
         note += f' PALで導入する版は{display}です。IPA版の{ipa_version}とは配布物が異なります。'
+    release = copy.deepcopy(version)
+    release['downloadURL'] = base_url(version['downloadURL'], spec)
     result.update(name=spec.name, subtitle=f'PALから導入・{display}',
-                  localizedDescription=note, versions=[copy.deepcopy(version)])
+                  localizedDescription=note, versions=[release])
     # A plain source listing is not a Patreon membership or entitlement grant.
     return result
 
@@ -210,7 +216,7 @@ def load(path: Path) -> dict:
     return json.loads(path.read_text()) if path.exists() else {}
 
 
-def refresh(root: Path, force: bool = False) -> None:
+def refresh(root: Path, force: bool = False, *, summary: bool = False) -> None:
     prior = load(root / 'source.json')
     # Generate every output in memory/temp storage; never publish a partial failed check.
     with tempfile.TemporaryDirectory(prefix='acbs-catalog-') as tmp:
@@ -268,7 +274,7 @@ def refresh(root: Path, force: bool = False) -> None:
             temp.write_text(text, encoding='utf-8')
             os.replace(temp, dest)
     print('CATALOG_OK: source.json and pal-source.json contain only notarized PAL-compatible betas')
-    if os.getenv('GITHUB_STEP_SUMMARY'):
+    if summary and os.getenv('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
             summary.write('## Published beta catalogs\n\n')
             for app in apps:
@@ -283,7 +289,7 @@ if __name__ == '__main__':
     parser.add_argument('--force', action='store_true')
     args = parser.parse_args()
     try:
-        refresh(Path.cwd(), args.force)
+        refresh(Path.cwd(), args.force, summary=True)
     except Exception as exc:
         print(f'CATALOG_FAILED: {type(exc).__name__}: {exc}', file=sys.stderr)
         raise SystemExit(1)
