@@ -1,0 +1,76 @@
+name: Check PAL beta distribution
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/check-pal-beta.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Inspect official PAL beta metadata and public ADP
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, urllib.request, urllib.error
+          from urllib.parse import urlsplit
+
+          class OfficialRedirects(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  host = (urlsplit(newurl).hostname or '').lower()
+                  if urlsplit(newurl).scheme != 'https' or host not in {'altstore.io', 'cdn.altstore.io', 'f000.backblazeb2.com'}:
+                      raise ValueError('Redirect leaves the official distribution hosts: ' + host)
+                  return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+          opener = urllib.request.build_opener(OfficialRedirects())
+          def read(url, limit=4*1024*1024):
+              req = urllib.request.Request(url, headers={'User-Agent':'acbs-pal-public-check/1.0', 'Cache-Control':'no-cache'})
+              with opener.open(req, timeout=30) as response:
+                  data = response.read(limit+1)
+                  if len(data)>limit:
+                      raise ValueError('Metadata exceeds size limit')
+                  print('HTTP',response.status,url,'bytes',len(data),'type',response.headers.get('Content-Type'))
+                  return data
+
+          source = json.loads(read('https://cdn.altstore.io/file/altstore/marketplace.json'))
+          beta = next(a for a in source['apps'] if a.get('bundleIdentifier') == 'io.altstore.AltStore.Beta')
+          version = beta['versions'][0]
+          print('OFFICIAL_BETA',json.dumps({'marketplaceID':beta.get('marketplaceID'),'bundleIdentifier':beta['bundleIdentifier'],'version':version,'patreon':beta.get('patreon')},ensure_ascii=False))
+          base = version['downloadURL'].rstrip('/')
+          if base.endswith('/manifest.json'):
+              base = base[:-len('/manifest.json')]
+          if urlsplit(base).scheme != 'https' or urlsplit(base).hostname != 'altstore.io':
+              raise ValueError('Latest beta is not hosted on the expected public official domain')
+          results = {}
+          for name in ('manifest.json', 'signature'):
+              try:
+                  data = read(base+'/'+name)
+                  if name == 'manifest.json':
+                      manifest = json.loads(data)
+                      print('MANIFEST_FIELDS',json.dumps(manifest,ensure_ascii=False)[:18000])
+                      for key, expected in [('appleItemId',beta['marketplaceID']),('bundleId','io.altstore.AltStore'),('shortVersionString',version['version']),('bundleVersion',version['buildVersion'])]:
+                          if str(manifest.get(key)) != str(expected):
+                              raise ValueError('Manifest does not match source field '+key)
+                  else:
+                      if not data or data.lstrip().lower().startswith((b'<html',b'<!doctype')):
+                          raise ValueError('Signature missing or HTML response')
+                      print('SIGNATURE_SHA256',hashlib.sha256(data).hexdigest())
+                  results[name] = 'publicly retrieved; not an iOS installation test'
+              except Exception as exc:
+                  results[name] = type(exc).__name__+': '+str(exc)
+                  print('CHECK_FAILED',name,results[name])
+          print('RESULT',json.dumps(results,ensure_ascii=False))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as summary:
+              summary.write('## PAL beta public distribution check\n\n')
+              summary.write('Official listing: '+str(version.get('marketingVersion',version['version']))+'\n\n')
+              summary.write('No Patreon credentials or user tokens were used. No app or existing source was modified.\n\n')
+              for name,result in results.items():
+                  summary.write('- '+name+': '+result+'\n')
+              summary.write('\nThis only tests public file availability, NOT successful installation, entitlement eligibility, or signature validity.\n')
+          PY
