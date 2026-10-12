@@ -1,0 +1,80 @@
+name: Check Classic 2.3.1 distribution
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/check-classic-231.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check published Classic versions and 2.3.1 ADP candidates
+        shell: bash
+        run: |
+          python3 -B - <<'PY'
+          import hashlib, json, os, urllib.error, urllib.request
+          from urllib.parse import urlsplit
+
+          class OfficialRedirects(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  p = urlsplit(newurl)
+                  if p.scheme != 'https' or p.hostname not in {'altstore.io', 'cdn.altstore.io', 'f000.backblazeb2.com'} or p.username or p.password or p.query:
+                      raise ValueError('Refusing a redirect outside public official distribution')
+                  return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+          opener = urllib.request.build_opener(OfficialRedirects())
+          def get(url, limit=8*1024*1024):
+              request = urllib.request.Request(url, headers={'Cache-Control': 'no-cache', 'User-Agent': 'acbs-classic-231-check/1.0'})
+              with opener.open(request, timeout=30) as response:
+                  data = response.read(limit+1)
+                  if len(data) > limit:
+                      raise ValueError('Response exceeds size limit')
+                  print('HTTP', response.status, url, len(data), flush=True)
+                  return data
+
+          report = {'officialListings': [], 'requestedADPs': []}
+          for filename in ('apps.json', 'marketplace.json'):
+              feed = json.loads(get('https://cdn.altstore.io/file/altstore/'+filename))
+              for app in feed['apps']:
+                  if app.get('bundleIdentifier') in {'com.rileytestut.AltStore', 'com.rileytestut.AltStore.Beta'}:
+                      version = app['versions'][0]
+                      row = {'source': filename, 'bundleIdentifier': app['bundleIdentifier'], 'marketplaceID': app.get('marketplaceID'), 'version': version}
+                      report['officialListings'].append(row)
+                      print('OFFICIAL_CLASSIC', json.dumps(row, ensure_ascii=False), flush=True)
+
+          # These two paths are explicit candidates, not assumed published releases.
+          for path in ('2_3_1_b', '2_3_1'):
+              base = 'https://altstore.io/adps/altstore-classic/'+path
+              row = {'candidate': base}
+              try:
+                  manifest_data = get(base+'/manifest.json')
+                  manifest = json.loads(manifest_data)
+                  row.update(status=200, manifest={k: manifest.get(k) for k in ('appleItemId','bundleId','shortVersionString','bundleVersion','appleVersionId','minimumSystemVersions','isLaunchProhibited','appInstallDeterminants')}, manifestSHA256=hashlib.sha256(manifest_data).hexdigest())
+                  if str(manifest.get('appleItemId')) not in {'6773950481','6670504087'} or manifest.get('bundleId') not in {'com.rileytestut.AltStore.Beta','com.rileytestut.AltStore'}:
+                      raise ValueError('Candidate is not the expected Classic app')
+                  if manifest.get('isLaunchProhibited') is not False:
+                      raise ValueError('Candidate does not permit launch')
+                  signature = get(base+'/signature', 256*1024)
+                  if not signature or signature.lstrip().lower().startswith((b'<html',b'<!doctype')):
+                      raise ValueError('Missing signature file')
+                  row['signatureSHA256'] = hashlib.sha256(signature).hexdigest()
+                  variants = [v for v in manifest.get('variants',[]) if any(t.get('device','').startswith('iPhone') for t in v.get('installTargets',[]))]
+                  row['iphoneVariant'] = variants[0] if variants else None
+                  row['result'] = 'Official candidate metadata retrieved; installation and release identity still require validation'
+              except urllib.error.HTTPError as error:
+                  row.update(status=error.code, result='Candidate unavailable; no substitution or version relabelling performed')
+              except Exception as error:
+                  row['result'] = type(error).__name__+': '+str(error)
+              report['requestedADPs'].append(row)
+              print('CLASSIC_231_CANDIDATE', json.dumps(row, ensure_ascii=False), flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Classic 2.3.1 distribution check\n\n')
+              summary.write('Public requests only. No credentials, source edits, application changes, or installation were performed by this inspection job.\n\n')
+              summary.write('```json\n'+json.dumps(report, ensure_ascii=False, indent=2)+'\n```\n')
+          PY
