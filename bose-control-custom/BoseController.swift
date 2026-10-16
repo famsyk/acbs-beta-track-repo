@@ -440,10 +440,16 @@ final class BoseController: ObservableObject {
             defer { isBusy = false }
 
             message = "Preparing iOS BLE pairing…"
-            bluetooth.prepareForAccessorySetup()
+            guard let bleTransport = bluetooth as? BoseBLETransport else {
+                isBusy = false
+                needsBLEPairing = true
+                message = "BLE再ペアリングは標準のBose BLE transportでのみ利用できます。"
+                return
+            }
+            bleTransport.prepareForAccessorySetup()
 
             let result = await BoseAccessorySetupManager.shared.prepareAndShowPairing()
-            bluetooth.restoreAfterAccessorySetup()
+            bleTransport.restoreAfterAccessorySetup()
 
             switch result {
             case .success:
