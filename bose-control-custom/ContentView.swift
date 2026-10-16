@@ -595,6 +595,22 @@ private struct DeviceView: View {
                     Button("Enter pairing mode") { showPairConfirm = true }
                     Button("Power off headphones", role: .destructive) { showPowerConfirm = true }
                 }
+                Section("LOGS / クラッシュ診断") {
+                    Text("LiveContainerのデータフォルダ直下に「Logs」を保存します。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(BoseDiagnostics.shared.logsDirectory.path)
+                        .font(.caption2.monospaced())
+                        .textSelection(.enabled)
+                    Button("ログ書き込みテスト") {
+                        BoseDiagnostics.shared.diagnosticProbe()
+                    }
+                    ShareLink("app.logを共有", item: BoseDiagnostics.shared.appLogURL)
+                    ShareLink("crash.logを共有", item: BoseDiagnostics.shared.crashLogURL)
+                    Text("アプリを開けない場合はLiveContainerからData → Logsを直接確認してください。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
                 Section("LAST CHANGES") {
                     if controller.writeLog.isEmpty { Text("Changes are verified by reading them back from the headphones.").foregroundStyle(.secondary) }
                     ForEach(controller.writeLog.prefix(8), id: \.self) { Text($0).font(.caption.monospaced()) }
