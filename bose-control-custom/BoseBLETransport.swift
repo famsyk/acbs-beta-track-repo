@@ -105,7 +105,7 @@ final class BoseBLETransport: NSObject, BoseTransport {
     func exchange(_ packet: BMAPPacket, drain: Bool = false, timeout: Duration = .seconds(5)) async throws -> [BMAPPacket] {
         guard isReady, let peripheral, let characteristic else { throw BoseBLEError.notConnected }
         guard pending == nil else { throw BoseBLEError.busy }
-        BoseDiagnostics.shared.event("BMAP TX", "block=\(packet.functionBlock) function=\(packet.function) op=\(packet.operation) payloadBytes=\(packet.payload.count)")
+        BoseDiagnostics.shared.event("BMAP TX", "block=\(packet.functionBlock) function=\(packet.function) op=\(packet.operation) payloadBytes=\(packet.payload.count) timeout=\(timeout) drain=\(drain)")
 
         let id = UUID()
         return try await withCheckedThrowingContinuation { continuation in
@@ -128,7 +128,9 @@ final class BoseBLETransport: NSObject, BoseTransport {
                 guard let self else { return }
                 do {
                     let payloadSize = max(1, peripheral.maximumWriteValueLength(for: .withResponse) - 1)
-                    for frame in segmentBMAP(packet.data, payloadSize: payloadSize) {
+                    let frames = segmentBMAP(packet.data, payloadSize: payloadSize)
+                    BoseDiagnostics.shared.event("BMAP TX DETAIL", "id=\(id) MTUchunk=\(payloadSize) frames=\(frames.count) totalBytes=\(packet.data.count)")
+                    for frame in frames {
                         try await self.write(frame, peripheral: peripheral, characteristic: characteristic)
                     }
                 } catch {
@@ -195,7 +197,18 @@ final class BoseBLETransport: NSObject, BoseTransport {
         switch result {
         case .success(let packets):
             let summary = packets.map { "\($0.functionBlock).\($0.function) op=\($0.operation) bytes=\($0.payload.count)" }.joined(separator: "; ")
-            BoseDiagnostics.shared.event("BMAP RX", summary.isEmpty ? "empty reply" : summary)
+            BoseDiagnostics.shared.event("BMAP RX", "id=\(id) count=\(packets.count) " + (summary.isEmpty ? "empty reply" : summary))
+            for (ordinal, packet) in packets.prefix(24).enumerated() {
+                let isMode = packet.functionBlock == 31 && packet.function == 6
+                let preview = Data(packet.payload.prefix(isMode ? 16 : 8)).hex
+                BoseDiagnostics.shared.event(
+                    "BMAP RX DETAIL",
+                    "id=\(id) idx=\(ordinal) block=\(packet.functionBlock) function=\(packet.function) op=\(packet.operation) payloadBytes=\(packet.payload.count) preview=\(preview)"
+                )
+            }
+            if packets.count > 24 {
+                BoseDiagnostics.shared.event("BMAP RX DETAIL", "id=\(id) omitted=\(packets.count - 24)")
+            }
         case .failure(let error):
             BoseDiagnostics.shared.event("BMAP ERROR", "block=\(request.expectedBlock) function=\(request.expectedFunction): \(error.localizedDescription)")
         }
@@ -274,8 +287,9 @@ extension BoseBLETransport: CBCentralManagerDelegate {
 
     nonisolated func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         Task { @MainActor in
-            guard connectionContinuation != nil, isBose(peripheral, advertisementData: advertisementData) else { return }
-            BoseDiagnostics.shared.event("BLE", "matched Bose peripheral; initiating connection")
+            guard connectionContinuation != nil, self.peripheral == nil,
+                  isBose(peripheral, advertisementData: advertisementData) else { return }
+            BoseDiagnostics.shared.event("BLE", "matched Bose peripheral; initiating single connection")
             self.peripheral = peripheral
             connectedName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? "Bose headphones"
             central.stopScan()
@@ -365,7 +379,11 @@ extension BoseBLETransport: CBPeripheralDelegate {
                     for packet in BMAPPacket.parseAll(message) { accept(packet) }
                 }
             } catch {
-                BoseDiagnostics.shared.event("BLE ERROR", "BMAP segment reassembly failed: " + error.localizedDescription)
+                let preview = Data(value.prefix(16)).hex
+                BoseDiagnostics.shared.event(
+                    "BLE ERROR",
+                    "BMAP reassembly failed: \(error.localizedDescription) rawBytes=\(value.count) preview=\(preview) requestPending=\(pending != nil)"
+                )
                 if let request = pending { finishPending(id: request.id, result: .failure(error)) }
             }
         }
