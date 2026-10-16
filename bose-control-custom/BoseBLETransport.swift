@@ -7,6 +7,7 @@ enum BoseBLEError: LocalizedError {
     case notConnected
     case busy
     case timeout(String)
+    case pairingRequired
 
     var errorDescription: String? {
         switch self {
@@ -15,6 +16,8 @@ enum BoseBLEError: LocalizedError {
         case .notConnected: return "The headphones are not connected."
         case .busy: return "Another headphone command is still running."
         case let .timeout(operation): return "Timed out while \(operation)."
+        case .pairingRequired:
+            return "BoseのBLE認証が不足しています。iPhoneの設定 → Bluetoothでイヤホンの接続を確認し、Bose公式アプリでセットアップ後、このアプリから再接続してください。LiveContainerで続く場合は通常インストールでもお試しください。"
         }
     }
 }
@@ -39,6 +42,10 @@ final class BoseBLETransport: NSObject, BoseTransport {
     private var connectionContinuation: CheckedContinuation<Void, Error>?
     private var connectionTimeout: Task<Void, Never>?
     private var writeContinuation: CheckedContinuation<Void, Error>?
+    // A read of a secured characteristic can ask iOS to negotiate BLE pairing.
+    // The OS controls pairing. This app never manufactures keys or bypasses security.
+    private var securityProbePending = false
+    private var securityFailure: BoseBLEError?
     private var incoming = BMAPReassembler()
     private var pending: PendingExchange?
 
@@ -70,7 +77,7 @@ final class BoseBLETransport: NSObject, BoseTransport {
         try await withCheckedThrowingContinuation { continuation in
             connectionContinuation = continuation
             connectionTimeout = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(18))
+                try? await Task.sleep(for: .seconds(35))
                 self?.finishConnection(.failure(BoseBLEError.timeout("finding the headphones")))
             }
             beginScanIfPossible()
@@ -83,6 +90,9 @@ final class BoseBLETransport: NSObject, BoseTransport {
     }
 
     func exchange(_ packet: BMAPPacket, drain: Bool = false, timeout: Duration = .seconds(5)) async throws -> [BMAPPacket] {
+        // Stop immediately after the first failed security handshake instead
+        // of making dozens of doomed BMAP attempts during feature discovery.
+        if let securityFailure { throw securityFailure }
         guard isReady, let peripheral, let characteristic else { throw BoseBLEError.notConnected }
         guard pending == nil else { throw BoseBLEError.busy }
         BoseDiagnostics.shared.event("BMAP TX", "block=\(packet.functionBlock) function=\(packet.function) op=\(packet.operation) payloadBytes=\(packet.payload.count)")
@@ -138,6 +148,14 @@ final class BoseBLETransport: NSObject, BoseTransport {
             return UInt16(data[0]) | (UInt16(data[1]) << 8) == 0x009e
         }
         return false
+    }
+
+    private func pairingError(_ error: Error) -> BoseBLEError? {
+        let ns = error as NSError
+        // Standard GATT/ATT errors: 0x05=insufficient authentication,
+        // 0x0c=insufficient encryption key size, 0x0f=insufficient encryption.
+        guard ns.domain == CBATTErrorDomain, [5, 12, 15].contains(ns.code) else { return nil }
+        return .pairingRequired
     }
 
     private func write(_ data: Data, peripheral: CBPeripheral, characteristic: CBCharacteristic) async throws {
@@ -228,6 +246,8 @@ final class BoseBLETransport: NSObject, BoseTransport {
         peripheral = nil
         characteristic = nil
         connectedName = nil
+        securityProbePending = false
+        securityFailure = nil
         incoming.reset()
         if let continuation = writeContinuation {
             writeContinuation = nil
@@ -293,7 +313,7 @@ extension BoseBLETransport: CBPeripheralDelegate {
             guard let secure = service.characteristics?.first(where: { $0.uuid == Self.secureUUID }) else {
                 finishConnection(.failure(BoseBLEError.connectionFailed("encrypted BMAP characteristic was not exposed"))); return
             }
-            BoseDiagnostics.shared.event("BLE", "BMAP characteristic discovered; enabling notifications")
+            BoseDiagnostics.shared.event("BLE", "BMAP characteristic properties=\(secure.properties.rawValue); enabling notifications")
             characteristic = secure
             peripheral.setNotifyValue(true, for: secure)
         }
@@ -301,8 +321,22 @@ extension BoseBLETransport: CBPeripheralDelegate {
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         Task { @MainActor in
-            if let error { finishConnection(.failure(BoseBLEError.connectionFailed(error.localizedDescription))) }
-            else if characteristic.uuid == Self.secureUUID && characteristic.isNotifying { finishConnection(.success(())) }
+            if let error {
+                let detail = pairingError(error) ?? BoseBLEError.connectionFailed(error.localizedDescription)
+                if case .pairingRequired = detail { securityFailure = detail }
+                finishConnection(.failure(detail))
+            } else if characteristic.uuid == Self.secureUUID && characteristic.isNotifying {
+                if characteristic.properties.contains(.read) {
+                    // When available, a secured GATT read asks CoreBluetooth to
+                    // negotiate pairing, before our first BMAP write.
+                    securityProbePending = true
+                    BoseDiagnostics.shared.event("SECURITY", "secured read preflight started; iOS may request pairing")
+                    peripheral.readValue(for: characteristic)
+                } else {
+                    BoseDiagnostics.shared.event("SECURITY", "BMAP characteristic has no read property; awaiting normal write authentication")
+                    finishConnection(.success(()))
+                }
+            }
         }
     }
 
@@ -311,8 +345,14 @@ extension BoseBLETransport: CBPeripheralDelegate {
             guard let continuation = writeContinuation else { return }
             writeContinuation = nil
             if let error {
-                BoseDiagnostics.shared.event("BLE ERROR", "characteristic write failed: " + error.localizedDescription)
-                continuation.resume(throwing: error)
+                if let auth = pairingError(error) {
+                    securityFailure = auth
+                    BoseDiagnostics.shared.event("SECURITY", "ATT authentication/encryption rejected the write (domain=\((error as NSError).domain), code=\((error as NSError).code)).")
+                    continuation.resume(throwing: auth)
+                } else {
+                    BoseDiagnostics.shared.event("BLE ERROR", "characteristic write failed: " + error.localizedDescription)
+                    continuation.resume(throwing: error)
+                }
             } else {
                 continuation.resume()
             }
@@ -321,7 +361,28 @@ extension BoseBLETransport: CBPeripheralDelegate {
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         Task { @MainActor in
-            guard error == nil, characteristic.uuid == Self.secureUUID, let value = characteristic.value else { return }
+            guard characteristic.uuid == Self.secureUUID else { return }
+            if securityProbePending {
+                securityProbePending = false
+                if let error {
+                    if let auth = pairingError(error) {
+                        securityFailure = auth
+                        BoseDiagnostics.shared.event("SECURITY", "secure read preflight rejected; ATT code=\((error as NSError).code)")
+                        finishConnection(.failure(auth))
+                    } else {
+                        BoseDiagnostics.shared.event("SECURITY", "optional secure read unsupported/failed: " + error.localizedDescription)
+                        finishConnection(.success(()))
+                    }
+                } else {
+                    BoseDiagnostics.shared.event("SECURITY", "secured read completed; attempting BMAP requests")
+                    finishConnection(.success(()))
+                }
+                return
+            }
+            guard error == nil, let value = characteristic.value else {
+                if let error { BoseDiagnostics.shared.event("BLE ERROR", "notification failed: " + error.localizedDescription) }
+                return
+            }
             do {
                 if let message = try incoming.feed(value) {
                     for packet in BMAPPacket.parseAll(message) { accept(packet) }
