@@ -1,0 +1,136 @@
+name: Export Bose Control Plus complete source
+
+on:
+  push:
+    branches:
+      - build/bose-control-plus-20261016
+    paths:
+      - .github/workflows/export-bose-plus-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Bose custom enhancements
+        uses: actions/checkout@v4
+        with:
+          path: customization
+          persist-credentials: false
+
+      - name: Checkout pinned upstream source
+        uses: actions/checkout@v4
+        with:
+          repository: jpita/bose-headphones-control
+          ref: c004ce069944dbd1d04d27754730e8731e45fd84
+          path: upstream
+          persist-credentials: false
+
+      - name: Overlay previously built enhanced Swift code
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in BoseBMAP.swift BoseController.swift ContentView.swift; do
+            test -s "customization/bose-control-custom/$file"
+            cp "customization/bose-control-custom/$file" "upstream/native-ios/BoseHeadphonesControl/$file"
+            cmp "customization/bose-control-custom/$file" "upstream/native-ios/BoseHeadphonesControl/$file"
+          done
+
+      - name: Bundle complete, standalone source and build instructions
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE="$RUNNER_TEMP/Bose-Control-Plus-Source"
+          mkdir -p "$PACKAGE" "$GITHUB_WORKSPACE/output"
+
+          # The complete upstream repository, pinned to the same revision as
+          # the successful IPA build. Do not ship .git metadata.
+          tar -C upstream --exclude='./.git' -cf - . | tar -C "$PACKAGE" -xf -
+
+          # Preserve the editable customization sources and the existing CI.
+          mkdir -p "$PACKAGE/bose-control-custom"
+          cp customization/bose-control-custom/*.swift "$PACKAGE/bose-control-custom/"
+          cp customization/.github/workflows/build-bose-control-plus.yml "$PACKAGE/.github/workflows/build-bose-control-plus.yml"
+
+          cat > "$PACKAGE/README_SOURCE_JA.md" <<'README'
+          # Bose Control Plus — 完全ソースコード
+
+          このZIPはBose Headphones Controlの上流ソース全体に拡張版Swiftコードを適用した、
+          ビルド可能なiPhoneアプリのソースです。GitHub Actionsでビルドに成功した拡張版と同じ
+          `BoseBMAP.swift`、`BoseController.swift`、`ContentView.swift` を含みます。
+
+          ## iPhoneアプリ
+          - Xcodeプロジェクト: `native-ios/BoseHeadphonesControl.xcodeproj`
+          - Scheme: `BoseHeadphonesControl`
+          - iOS 17以上／iPhone arm64
+          - Bluetooth LEで対応するBoseイヤホンのBMAP設定を制御
+          - `bose-control-custom/` に拡張した3つのSwiftファイルも保存済み
+
+          ## MacでXcodeを使ってビルド
+          ```sh
+          open native-ios/BoseHeadphonesControl.xcodeproj
+          ```
+          Xcodeで自分のApple TeamとiPhoneを指定し、Build/Runしてください。
+          未署名のiPhone実機向けアプリをコマンドラインで確認するには:
+          ```sh
+          xcodebuild -project native-ios/BoseHeadphonesControl.xcodeproj \
+            -scheme BoseHeadphonesControl -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath /tmp/bose-control-plus-build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            'CODE_SIGN_IDENTITY=' 'DEVELOPMENT_TEAM=' clean build
+          ```
+          GitHub Actionsで未署名IPAを作る構成も
+          `.github/workflows/build-bose-control-plus.yml` にあります。
+          （このワークフローは公開済みカスタマイズブランチから上流を再取得してビルドします。）
+
+          ## 元となるソースと使用許諾
+          - 上流: https://github.com/jpita/bose-headphones-control
+          - 上流コミット: c004ce069944dbd1d04d27754730e8731e45fd84
+          - 上流と拡張版のバイナリの元になったプロジェクトはMITライセンスです。LICENSEを参照。
+          - プロトコル解析の参照: aaronsb/bosectl、kristoferlund/omarchy-bose-headphones、
+            NerdySouth/bozo、depau/bosectl-android
+          - 他のプロジェクトのソース実装はそのまま取り込んでいません。
+
+          ## 注意
+          すべてのBoseイヤホンでの動作を保証するものではありません。機種・ファームウェアに
+          よって利用可能な設定が異なります。最大ANCボタンはイヤホン内部の適応DSPを
+          無効化するものではありません。通常のiPhoneでは署名し直す必要があります。
+          README
+
+          cat > "$PACKAGE/SOURCE_PROVENANCE.txt" <<EOF
+          Source export: Bose Control Plus
+          Previously successful IPA workflow run: 38884358776
+          Customized source SHA: $GITHUB_SHA
+          Upstream: jpita/bose-headphones-control
+          Upstream SHA: c004ce069944dbd1d04d27754730e8731e45fd84
+          Enhanced Swift files: BoseBMAP.swift, BoseController.swift, ContentView.swift
+          Xcode project: native-ios/BoseHeadphonesControl.xcodeproj
+          Export UTC: $(date -u +'%FT%TZ')
+          EOF
+
+          # Validate necessary sources are present.
+          test -s "$PACKAGE/LICENSE"
+          test -s "$PACKAGE/native-ios/BoseHeadphonesControl.xcodeproj/project.pbxproj"
+          test -s "$PACKAGE/native-ios/BoseHeadphonesControl/BoseController.swift"
+          test -s "$PACKAGE/native-ios/BoseHeadphonesControl/BoseBMAP.swift"
+          test -s "$PACKAGE/native-ios/BoseHeadphonesControl/ContentView.swift"
+          test -s "$PACKAGE/native-ios/BoseHeadphonesControl/BoseBLETransport.swift"
+          test -s "$PACKAGE/native-ios/BoseHeadphonesControl/App.swift"
+
+          (cd "$RUNNER_TEMP" && zip -qry "$GITHUB_WORKSPACE/output/Bose-Control-Plus-Source.zip" Bose-Control-Plus-Source)
+          unzip -t "$GITHUB_WORKSPACE/output/Bose-Control-Plus-Source.zip" | tail -1
+          (cd "$GITHUB_WORKSPACE/output" && shasum -a 256 Bose-Control-Plus-Source.zip > SHA256SUMS.txt)
+          ls -lh "$GITHUB_WORKSPACE/output/Bose-Control-Plus-Source.zip"
+
+      - name: Upload full source zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bose-Control-Plus-complete-source
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
