@@ -430,6 +430,10 @@ final class BoseController: ObservableObject {
 
     func repairBLEPairing() {
         guard !isBusy else { return }
+        guard #available(iOS 18.0, *) else {
+            message = "iOS 18以降でBLE再ペアリングを利用できます。"
+            return
+        }
         BoseDiagnostics.shared.event("ASK", "user requested BLE pairing / re-authentication")
         Task {
             isBusy = true
