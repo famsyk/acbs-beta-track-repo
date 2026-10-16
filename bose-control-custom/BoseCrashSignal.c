@@ -46,8 +46,10 @@ static void signalHandler(int number) {
     action.sa_handler = SIG_DFL;
     sigemptyset(&action.sa_mask);
     (void)sigaction(number, &action, NULL);
-    (void)kill(getpid(), number);
-    _exit(128 + number);
+    // Return to the faulting instruction (or abort()), allowing iOS's
+    // native crash reporter to generate the usual .ips report.
+    // SA_RESETHAND ensures the next raise takes the default path.
+    return;
 }
 
 void BoseDiagnosticsInstall(const char *applicationPath, const char *crashPath) {
