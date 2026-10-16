@@ -1,0 +1,96 @@
+name: Build Bose Control Plus iOS IPA
+
+on:
+  push:
+    branches:
+      - build/bose-control-plus-20261016
+    paths:
+      - .github/workflows/build-bose-control-plus.yml
+      - bose-control-custom/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - name: Checkout private customization branch
+        uses: actions/checkout@v4
+        with:
+          path: customization
+          persist-credentials: false
+
+      - name: Checkout pinned MIT-licensed Bose controller source
+        uses: actions/checkout@v4
+        with:
+          repository: jpita/bose-headphones-control
+          ref: c004ce069944dbd1d04d27754730e8731e45fd84
+          path: upstream
+          persist-credentials: false
+
+      - name: Apply extended iPhone UI and BMAP controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in BoseBMAP.swift BoseController.swift ContentView.swift; do
+            test -s "customization/bose-control-custom/$file"
+            cp "customization/bose-control-custom/$file" "upstream/native-ios/BoseHeadphonesControl/$file"
+          done
+          echo "Extended Bose native iOS source loaded"
+
+      - name: Print build environment
+        run: |
+          sw_vers
+          xcodebuild -version
+
+      - name: Build iPhone arm64 Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project upstream/native-ios/BoseHeadphonesControl.xcodeproj \
+            -scheme BoseHeadphonesControl \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/bose-plus-ios" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            clean build
+
+      - name: Verify and package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/bose-plus-ios/Build/Products/Release-iphoneos/BoseHeadphonesControl.app"
+          test -s "$APP/BoseHeadphonesControl"
+          mkdir -p "$RUNNER_TEMP/package/Payload" "$GITHUB_WORKSPACE/output"
+          ditto "$APP" "$RUNNER_TEMP/package/Payload/BoseHeadphonesControl.app"
+          codesign --force --deep --sign - --timestamp=none "$RUNNER_TEMP/package/Payload/BoseHeadphonesControl.app"
+          codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/package/Payload/BoseHeadphonesControl.app"
+          (cd "$RUNNER_TEMP/package" && zip -qry "$GITHUB_WORKSPACE/output/Bose-Control-Plus-unsigned.ipa" Payload)
+          unzip -t "$GITHUB_WORKSPACE/output/Bose-Control-Plus-unsigned.ipa"
+          echo "Upstream MIT: jpita/bose-headphones-control @ c004ce069944dbd1d04d27754730e8731e45fd84" > "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Enhancements: BoseBMAP.swift, BoseController.swift, ContentView.swift" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Sources researched: aaronsb/bosectl (MIT), kristoferlund/omarchy-bose-headphones (MIT), NerdySouth/bozo (MIT); protocol facts independently implemented." >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Contributor GPL app depau/bosectl-android used only as protocol reference; source code not copied." >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Source branch: $GITHUB_REF_NAME" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Customized commit: $GITHUB_SHA" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Xcode: $(xcodebuild -version | tr '\n' ' ')" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Architecture: $(lipo -archs "$APP/BoseHeadphonesControl")" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Built UTC: $(date -u +'%FT%TZ')" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          (cd "$GITHUB_WORKSPACE/output" && shasum -a 256 Bose-Control-Plus-unsigned.ipa > SHA256SUMS.txt)
+          cat "$GITHUB_WORKSPACE/output/build-info.txt"
+
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bose-Control-Plus-unsigned-ipa
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
