@@ -566,7 +566,7 @@ final class BoseController: ObservableObject {
             next.autoCNC = active.autoCNC
             next.spatial = active.spatial
             next.windBlock = active.windBlock
-            next.ancEnabled = !active.ancToggle
+            next.ancEnabled = active.ancToggle
         } else if let packet = try? await request(1, 5, .get), packet.payload.count >= 3 {
             next.cncLevel = Int(packet.payload[packet.payload.startIndex + 1])
             next.cncMax = max(1, Int(packet.payload.first ?? 11) - 1)
@@ -584,7 +584,7 @@ final class BoseController: ObservableObject {
             next.autoCNC = settings.autoCNC
             next.spatial = settings.spatial
             next.windBlock = settings.windBlock
-            next.ancEnabled = !settings.ancToggle
+            next.ancEnabled = settings.ancToggle
         }
 
         if let packet = try? await request(31, 8, .get), packet.payload.count >= 3 {
@@ -718,7 +718,7 @@ final class BoseController: ObservableObject {
             if let autoCNC { settings.autoCNC = autoCNC }
             if let spatial { settings.spatial = spatial }
             if let windBlock { settings.windBlock = windBlock }
-            if let ancToggle { settings.ancToggle = !ancToggle }
+            if let ancToggle { settings.ancToggle = ancToggle }
             _ = try await request(31, 10, .setGet, settings.payload)
             return
         }
@@ -742,7 +742,7 @@ final class BoseController: ObservableObject {
         if let autoCNC { config.autoCNC = autoCNC }
         if let spatial { config.spatial = spatial }
         if let windBlock { config.windBlock = windBlock }
-        if let ancToggle { config.ancToggle = !ancToggle }
+        if let ancToggle { config.ancToggle = ancToggle }
         _ = try await request(31, 6, .setGet, try config.writePayload())
     }
 
