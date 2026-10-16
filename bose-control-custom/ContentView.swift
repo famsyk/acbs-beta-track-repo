@@ -83,6 +83,9 @@ private struct ControlView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     hero
+                    if controller.message.contains("BoseのBLE認証") {
+                        pairingHelpCard
+                    }
                     modeDeck
                     if controller.state.supports("audio_settings") || controller.state.activeProfile?.editable == true { noiseCard }
                     if controller.state.supports("eq") { equalizerCard }
@@ -105,6 +108,28 @@ private struct ControlView: View {
         .onAppear { syncControls() }
         .onChange(of: controller.state.eq) { _, _ in syncControls() }
         .onChange(of: controller.state.cncLevel) { _, _ in syncControls() }
+    }
+
+    private var pairingHelpCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Bluetoothの認証が必要です", systemImage: "lock.trianglebadge.exclamationmark")
+                .font(.headline)
+                .foregroundStyle(amber)
+            Text("イヤホンの検出には成功しましたが、Boseの暗号化された設定領域にアクセスできません。")
+                .font(.subheadline)
+            Text("1. iPhoneの設定 → BluetoothでBoseの接続を確認\n2. Bose公式アプリでイヤホンのセットアップを完了\n3. このアプリの「再接続」を押す")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("LiveContainerで解決しない場合、通常インストールのアプリでも同じ症状か確認してください。再ペアリングや初期化は最後の手段です。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Button("再接続して認証を確認") { controller.reconnect() }
+                .buttonStyle(.borderedProminent)
+                .disabled(controller.isBusy)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(card, in: RoundedRectangle(cornerRadius: 20))
     }
 
     private var background: some View {
@@ -166,7 +191,13 @@ private struct ControlView: View {
     private var modeDeck: some View {
         section("LISTENING MODE", icon: "ear") {
             if controller.state.playableProfiles.isEmpty {
-                loadingRow("Reading modes…")
+                if controller.message.contains("BoseのBLE認証") {
+                    Text("ペアリングを確認してから再接続してください。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    loadingRow("Reading modes…")
+                }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
