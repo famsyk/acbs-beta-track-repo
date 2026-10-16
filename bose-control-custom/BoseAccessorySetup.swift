@@ -3,6 +3,7 @@ import CoreBluetooth
 import Foundation
 import UIKit
 
+@available(iOS 18.0, *)
 @MainActor
 final class BoseAccessorySetupManager {
     static let shared = BoseAccessorySetupManager()
@@ -55,7 +56,7 @@ final class BoseAccessorySetupManager {
                 BoseDiagnostics.shared.event("ASK", "accessory added name=\(accessory.displayName) bluetoothID=\(accessory.bluetoothIdentifier?.uuidString ?? "nil")")
             }
         case .pickerDidDismiss:
-            guard let accessory = pendingAccessory else {
+            guard pendingAccessory != nil else {
                 finish(.failure(SetupError.cancelled))
                 return
             }
@@ -88,7 +89,7 @@ final class BoseAccessorySetupManager {
         return await withCheckedContinuation { continuation in
             self.continuation = continuation
 
-            var descriptor = ASDiscoveryDescriptor()
+            let descriptor = ASDiscoveryDescriptor()
             descriptor.bluetoothServiceUUID = Self.boseServiceUUID
             descriptor.bluetoothCompanyIdentifier = Self.boseCompanyID
             descriptor.bluetoothNameSubstring = "Bose"
