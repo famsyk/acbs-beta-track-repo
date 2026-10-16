@@ -34,7 +34,6 @@ final class BoseAccessorySetupManager {
     }
 
     private init() {
-        guard #available(iOS 18.0, *) else { return }
         BoseDiagnostics.shared.event("ASK", "AccessorySetupKit session activating")
         session.activate(on: .main) { [weak self] event in
             Task { @MainActor in
@@ -69,9 +68,6 @@ final class BoseAccessorySetupManager {
     }
 
     func prepareAndShowPairing() async -> Result<Void, Error> {
-        guard #available(iOS 18.0, *) else {
-            return .failure(SetupError.unavailable)
-        }
         guard continuation == nil else {
             return .failure(SetupError.picker("別のペアリング操作が進行中です。"))
         }
