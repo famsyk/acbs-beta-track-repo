@@ -62,10 +62,6 @@ final class BoseAccessorySetupManager {
             pendingAccessory = nil
             BoseDiagnostics.shared.event("ASK", "picker dismissed after accessory setup")
             finish(.success(()))
-        case .pickerSetupPairing:
-            BoseDiagnostics.shared.event("ASK", "iOS BLE pairing is in progress")
-        case .pickerSetupFailed:
-            BoseDiagnostics.shared.event("ASK ERROR", "iOS BLE pairing setup failed")
         default:
             break
         }
