@@ -323,8 +323,12 @@ extension BoseBLETransport: CBPeripheralDelegate {
             guard let secure = service.characteristics?.first(where: { $0.uuid == Self.secureUUID }) else {
                 finishConnection(.failure(BoseBLEError.connectionFailed("encrypted BMAP characteristic was not exposed"))); return
             }
-            BoseDiagnostics.shared.event("BLE", "BMAP characteristic discovered; enabling notifications")
+            BoseDiagnostics.shared.event("BLE", "BMAP characteristic discovered; properties=\(secure.properties.rawValue); enabling notifications")
             characteristic = secure
+            if secure.properties.contains(.read) {
+                BoseDiagnostics.shared.event("BLE SECURITY", "protected BMAP characteristic is readable; issuing read to let iOS establish pairing if required")
+                peripheral.readValue(for: secure)
+            }
             peripheral.setNotifyValue(true, for: secure)
         }
     }
@@ -351,7 +355,11 @@ extension BoseBLETransport: CBPeripheralDelegate {
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         Task { @MainActor in
-            guard error == nil, characteristic.uuid == Self.secureUUID, let value = characteristic.value else { return }
+            if let error {
+                BoseDiagnostics.shared.event("BLE ERROR", "characteristic update failed: \(error.localizedDescription)")
+                return
+            }
+            guard characteristic.uuid == Self.secureUUID, let value = characteristic.value else { return }
             do {
                 if let message = try incoming.feed(value) {
                     for packet in BMAPPacket.parseAll(message) { accept(packet) }
