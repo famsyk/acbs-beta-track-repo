@@ -510,6 +510,30 @@ private struct DeviceView: View {
                         }
                     }
                 }
+                Section("BLE SECURITY") {
+                    if controller.needsBLEPairing {
+                        Label("Encryption / authentication is insufficient.", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Boseの保護されたBLE characteristicへアクセスするため、iOSのシステムペアリングを一度実行します。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("通常接続で暗号化・認証に失敗した場合はこちらからiOS BLEペアリングを実行できます。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button {
+                        controller.repairBLEPairing()
+                    } label: {
+                        Label(
+                            controller.needsBLEPairing ? "BLEペアリング / 再認証" : "iOS BLEペアリングを開始",
+                            systemImage: "lock.shield"
+                        )
+                    }
+                    .disabled(controller.isBusy)
+                }
+
                 Section("DEVICE NAME") {
                     TextField("Headphone name", text: $name)
                     Button("Rename") { controller.rename(name) }.disabled(name.isEmpty || controller.isBusy)
