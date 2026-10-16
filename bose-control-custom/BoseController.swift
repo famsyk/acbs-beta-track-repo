@@ -90,6 +90,7 @@ final class BoseController: ObservableObject {
     @Published private(set) var isBusy = false
     @Published private(set) var writeLog: [String] = []
     @Published private(set) var rawLog: [String] = []
+    @Published private(set) var needsBLEPairing = false
 
     private let bluetooth: any BoseTransport
     private let logger = Logger(subsystem: "com.jpita.bose-headphones-control.ios", category: "BLE")
@@ -133,6 +134,7 @@ final class BoseController: ObservableObject {
 
     func reconnect() {
         BoseDiagnostics.shared.event("CONTROLLER", "reconnect")
+        needsBLEPairing = false
         Task {
             isBusy = true
             message = "Reconnecting over Bose BLE…"
@@ -426,6 +428,33 @@ final class BoseController: ObservableObject {
         noRefreshAction("Power off sent") { _ = try await self.request(7, 4, .start, Data([0])) }
     }
 
+    func repairBLEPairing() {
+        guard !isBusy else { return }
+        BoseDiagnostics.shared.event("ASK", "user requested BLE pairing / re-authentication")
+        Task {
+            isBusy = true
+            defer { isBusy = false }
+
+            message = "Preparing iOS BLE pairing…"
+            bluetooth.prepareForAccessorySetup()
+
+            let result = await BoseAccessorySetupManager.shared.prepareAndShowPairing()
+            bluetooth.restoreAfterAccessorySetup()
+
+            switch result {
+            case .success:
+                needsBLEPairing = false
+                message = "BLE pairing completed. Reconnecting…"
+                BoseDiagnostics.shared.event("ASK", "pairing flow completed; reconnecting CoreBluetooth")
+                await connectAndLoad()
+            case .failure(let error):
+                needsBLEPairing = true
+                message = error.localizedDescription
+                BoseDiagnostics.shared.event("ASK ERROR", error.localizedDescription)
+            }
+        }
+    }
+
     func clearRawLog() { rawLog = [] }
 
     func sendRaw(_ hex: String) {
@@ -486,6 +515,10 @@ final class BoseController: ObservableObject {
             state.connected = false
             state.name = "Headphones unavailable"
             message = error.localizedDescription
+            if error is BoseBLEError, case BoseBLEError.pairingRequired = error {
+                needsBLEPairing = true
+                message = "iOSのBLEペアリングが必要です。Deviceから「BLEペアリング / 再認証」を実行してください。"
+            }
             logger.error("Native backend failed: \(error.localizedDescription, privacy: .public)")
             BoseDiagnostics.shared.event("CONTROLLER ERROR", error.localizedDescription)
             print("[BLE] Controller failed: \(error.localizedDescription)")
@@ -500,6 +533,10 @@ final class BoseController: ObservableObject {
         } catch {
             state.connected = false
             if !silent { message = error.localizedDescription }
+            if error is BoseBLEError, case BoseBLEError.pairingRequired = error {
+                needsBLEPairing = true
+                if !silent { message = "iOSのBLEペアリングが必要です。Deviceから再認証してください。" }
+            }
         }
     }
 
