@@ -99,10 +99,12 @@ final class BoseController: ObservableObject {
     private var promptLanguageID: UInt8 = 0
 
     init(bluetooth: (any BoseTransport)? = nil) {
+        BoseDiagnostics.shared.event("CONTROLLER", "initializing")
         self.bluetooth = bluetooth ?? BoseBLETransport()
     }
 
     func start() {
+        BoseDiagnostics.shared.event("CONTROLLER", "start, connected=\(state.connected), task=\(startupTask != nil)")
         guard startupTask == nil, !state.connected else { return }
         startupTask = Task {
             isBusy = true
@@ -112,6 +114,7 @@ final class BoseController: ObservableObject {
     }
 
     func stop() {
+        BoseDiagnostics.shared.event("CONTROLLER", "stop")
         startupTask?.cancel()
         startupTask = nil
         bluetooth.disconnect()
@@ -119,6 +122,7 @@ final class BoseController: ObservableObject {
     }
 
     func refresh() {
+        BoseDiagnostics.shared.event("CONTROLLER", "refresh")
         guard !isBusy else { return }
         Task {
             isBusy = true
@@ -128,6 +132,7 @@ final class BoseController: ObservableObject {
     }
 
     func reconnect() {
+        BoseDiagnostics.shared.event("CONTROLLER", "reconnect")
         Task {
             isBusy = true
             message = "Reconnecting over Bose BLE…"
@@ -213,6 +218,7 @@ final class BoseController: ObservableObject {
     // Quiet is the factory full-cancellation preset. Does not disable Bose's
     // firmware-internal adaptive DSP or keep running when iOS suspends the app.
     func activateMaxQuiet() {
+        BoseDiagnostics.shared.event("ANC", "maximum cancellation requested")
         guard !isBusy else { return }
         Task {
             isBusy = true
@@ -460,24 +466,28 @@ final class BoseController: ObservableObject {
     }
 
     private func connectAndLoad() async {
+        BoseDiagnostics.shared.event("CONTROLLER", "connectAndLoad enter")
         do {
             logger.info("Starting native iPhone controller")
             print("[BLE] Starting native iPhone controller")
             message = "Looking for your Bose headphones…"
             try await bluetooth.connect()
             message = "Connected. Reading headphone settings…"
+            BoseDiagnostics.shared.event("CONTROLLER", "connected; reading headphone state")
             try await loadState()
             if CommandLine.arguments.contains("--smoke-test-write") {
                 try await smokeTestCurrentEqualizer()
             }
             message = "Connected directly over BLE."
             logger.info("Native iPhone controller connected and loaded state")
+            BoseDiagnostics.shared.event("CONTROLLER", "state loaded: profiles=\(state.profiles.count), mode=\(state.mode)")
             print("[BLE] Loaded battery=\(state.battery.map(String.init) ?? "unknown") mode=\(state.mode) profiles=\(state.profiles.count) features=\(state.features.sorted().joined(separator: ","))")
         } catch {
             state.connected = false
             state.name = "Headphones unavailable"
             message = error.localizedDescription
             logger.error("Native backend failed: \(error.localizedDescription, privacy: .public)")
+            BoseDiagnostics.shared.event("CONTROLLER ERROR", error.localizedDescription)
             print("[BLE] Controller failed: \(error.localizedDescription)")
         }
     }
@@ -494,6 +504,7 @@ final class BoseController: ObservableObject {
     }
 
     private func loadState(includeModeCatalog: Bool = true) async throws {
+        BoseDiagnostics.shared.event("STATE", "loadState start")
         // Older QuietComfort firmware expects this harmless ProductInfo GET first.
         _ = try? await request(0, 1, .get)
 
@@ -653,9 +664,11 @@ final class BoseController: ObservableObject {
             if profile.mutableMask & 0x10 != 0 { next.features.insert("anc_toggle") }
         }
         state = next
+        BoseDiagnostics.shared.event("STATE", "loadState finished, featureCount=\(state.features.count), mode=\(state.mode)")
     }
 
     private func action(_ label: String, operation: @escaping () async throws -> Void) {
+        BoseDiagnostics.shared.event("ACTION", "start: " + label)
         Task {
             isBusy = true
             defer { isBusy = false }
@@ -664,14 +677,17 @@ final class BoseController: ObservableObject {
                 try await loadState()
                 message = "\(label) — read-back complete."
                 writeLog.insert("✓ \(label)", at: 0)
+                BoseDiagnostics.shared.event("ACTION", "success: " + label)
             } catch {
                 message = error.localizedDescription
                 writeLog.insert("! \(label): \(error.localizedDescription)", at: 0)
+                BoseDiagnostics.shared.event("ACTION ERROR", label + ": " + error.localizedDescription)
             }
         }
     }
 
     private func noRefreshAction(_ label: String, operation: @escaping () async throws -> Void) {
+        BoseDiagnostics.shared.event("ACTION", "start: " + label)
         Task {
             isBusy = true
             defer { isBusy = false }
@@ -679,9 +695,11 @@ final class BoseController: ObservableObject {
                 try await operation()
                 message = label
                 writeLog.insert("✓ \(label)", at: 0)
+                BoseDiagnostics.shared.event("ACTION", "success: " + label)
             } catch {
                 message = error.localizedDescription
                 writeLog.insert("! \(label): \(error.localizedDescription)", at: 0)
+                BoseDiagnostics.shared.event("ACTION ERROR", label + ": " + error.localizedDescription)
             }
         }
     }
