@@ -629,9 +629,16 @@ private struct DeviceView: View {
                     Button("ログ書き込みテスト") {
                         BoseDiagnostics.shared.diagnosticProbe()
                     }
-                    ShareLink("app.logを共有", item: BoseDiagnostics.shared.appLogURL)
-                    ShareLink("crash.logを共有", item: BoseDiagnostics.shared.crashLogURL)
-                    Text("アプリを開けない場合はLiveContainerからData → Logsを直接確認してください。")
+                    ShareLink("app.log（詳細通信ログ）を共有", item: BoseDiagnostics.shared.appLogURL)
+                    ShareLink("crash.log（SIGTRAP・PC/LR）を共有", item: BoseDiagnostics.shared.crashLogURL)
+                    ShareLink("last-stage.txt（直前の処理）を共有", item: BoseDiagnostics.shared.lastStageURL)
+                    Text("受信モードの番号・解析段階・BMAPヘッダーも保存します。クラッシュ後にアプリを開けない場合はLiveContainerからData → Logsを確認してください。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("スタックトレース全体が必要な場合はiOSの解析データにある .ips も保存してください。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("注意：ログにはBluetoothプロトコルのデータ断片が含まれるため、共有範囲に注意してください。")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
