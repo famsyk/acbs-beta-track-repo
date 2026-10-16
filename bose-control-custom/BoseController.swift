@@ -551,7 +551,7 @@ final class BoseController: ObservableObject {
     }
 
     private func loadState(includeModeCatalog: Bool = true) async throws {
-        BoseDiagnostics.shared.event("STATE", "loadState start")
+        BoseDiagnostics.shared.checkpoint("state.begin", detail: "includeModeCatalog=\(includeModeCatalog)")
         // Older QuietComfort firmware expects this harmless ProductInfo GET first.
         _ = try? await request(0, 1, .get)
 
@@ -589,12 +589,18 @@ final class BoseController: ObservableObject {
 
         var configs: [BMAPModeConfig] = []
         if includeModeCatalog {
+            // Previous builds trapped here on duplicate IDs from repeated 31.6
+            // messages. All incoming modes now pass through a deduplicating decoder.
+            BoseDiagnostics.shared.checkpoint("modes.exchange.begin", detail: "request=31.1/start")
             let modePackets = try await bluetooth.exchange(BMAPPacket(31, 1, .start), drain: true, timeout: .seconds(7))
-            configs = modePackets
-                .filter { $0.functionBlock == 31 && $0.function == 6 && $0.operation == BMAPOperator.status.rawValue }
-                .compactMap { BMAPModeConfig.parse($0.payload) }
-                .sorted { $0.index < $1.index }
-            modesByIndex = Dictionary(uniqueKeysWithValues: configs.map { ($0.index, $0) })
+            BoseDiagnostics.shared.checkpoint("modes.exchange.received", detail: "packetCount=\(modePackets.count)")
+            configs = BMAPModeCatalog.decode(modePackets) { message in
+                BoseDiagnostics.shared.event("MODE CATALOG", message)
+            }
+            BoseDiagnostics.shared.checkpoint("modes.catalog.decoded", detail: "unique=\(configs.count), indices=\(configs.map { $0.index })")
+            // Assignment is safe if devices retransmit duplicate slot IDs.
+            modesByIndex.removeAll(keepingCapacity: true)
+            for config in configs { modesByIndex[config.index] = config }
             next.profiles = configs.map { config in
                 NativeProfile(
                     id: config.index,
@@ -610,10 +616,13 @@ final class BoseController: ObservableObject {
                     spatial: config.spatial
                 )
             }
+            BoseDiagnostics.shared.checkpoint("modes.profiles.created", detail: "count=\(next.profiles.count)")
         } else {
             next.profiles = state.profiles
+            BoseDiagnostics.shared.checkpoint("modes.catalog.reused", detail: "count=\(next.profiles.count)")
         }
 
+        BoseDiagnostics.shared.checkpoint("state.currentMode.begin")
         if let packet = try? await request(31, 3, .get), let index = packet.payload.first {
             next.modeIndex = Int(index)
             next.mode = next.profiles.first(where: { $0.id == Int(index) && !$0.name.isEmpty })?.name ?? "Mode \(index)"
@@ -630,6 +639,7 @@ final class BoseController: ObservableObject {
             next.cncMax = max(1, Int(packet.payload.first ?? 11) - 1)
         }
 
+        BoseDiagnostics.shared.checkpoint("state.audioSettings.begin")
         audioSettings = nil
         if let packet = try? await request(31, 10, .get), packet.payload.count >= 5 {
             let bytes = [UInt8](packet.payload)
@@ -645,6 +655,7 @@ final class BoseController: ObservableObject {
             next.ancEnabled = settings.ancToggle
         }
 
+        BoseDiagnostics.shared.checkpoint("state.extras.begin", detail: "favorites/multipoint/autoOff")
         if let packet = try? await request(31, 8, .get), packet.payload.count >= 3 {
             let mask = (UInt16(packet.payload[1]) << 8) | UInt16(packet.payload[2])
             next.favoriteMask = mask
@@ -710,8 +721,9 @@ final class BoseController: ObservableObject {
             if profile.mutableMask & 0x08 != 0 { next.features.insert("wind_block") }
             if profile.mutableMask & 0x10 != 0 { next.features.insert("anc_toggle") }
         }
+        BoseDiagnostics.shared.checkpoint("state.publish", detail: "profiles=\(next.profiles.count), mode=\(next.mode), features=\(next.features.sorted().joined(separator: ","))")
         state = next
-        BoseDiagnostics.shared.event("STATE", "loadState finished, featureCount=\(state.features.count), mode=\(state.mode)")
+        BoseDiagnostics.shared.checkpoint("state.complete", detail: "profileCount=\(state.profiles.count), mode=\(state.mode)")
     }
 
     private func action(_ label: String, operation: @escaping () async throws -> Void) {
