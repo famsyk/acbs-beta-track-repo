@@ -10,13 +10,16 @@ final class BoseDiagnostics {
     let logsDirectory: URL
     let appLogURL: URL
     let crashLogURL: URL
+    let lastStageURL: URL
     private let stateURL: URL
+    private var sequence: UInt64 = 0
 
     private init() {
         let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
         logsDirectory = home.appendingPathComponent("Logs", isDirectory: true)
         appLogURL = logsDirectory.appendingPathComponent("app.log")
         crashLogURL = logsDirectory.appendingPathComponent("crash.log")
+        lastStageURL = logsDirectory.appendingPathComponent("last-stage.txt")
         stateURL = logsDirectory.appendingPathComponent("last-state.txt")
 
         let fm = FileManager.default
@@ -36,6 +39,7 @@ final class BoseDiagnostics {
         }
 
         let oldState = try? String(contentsOf: stateURL, encoding: .utf8)
+        let oldStage = try? String(contentsOf: lastStageURL, encoding: .utf8)
         appLogURL.path.withCString { appPath in
             crashLogURL.path.withCString { crashPath in
                 BoseDiagnosticsInstall(appPath, crashPath)
@@ -54,13 +58,17 @@ final class BoseDiagnostics {
         All diagnostic files are in the guest application's Data/Logs folder.
         app.log: startup, scene lifecycle, Bose BLE connection, BMAP command metadata,
                  operation progress and errors (no raw packet contents).
-        crash.log: best-effort Objective-C uncaught exceptions and fatal POSIX signals.
+        crash.log: Objective-C exceptions; fatal signal + si_code, fault address,
+                   PC/LR/SP on arm64 (best effort, not a symbolicated backtrace).
+        last-stage.txt: last completed checkpoint; use after an unexpected exit.
         last-state.txt: active/background marker; unexpected active termination
                         is a hint, NOT proof of a crash.
         app-previous.log: rolled-over app log if the previous app.log exceeded 2 MB.
 
         LiveContainer: Long-press the guest app -> Settings / Containers -> Open Data Folder
-        and open Logs. Please share app.log and crash.log after reproducing the issue.
+        and open Logs. Please share app.log, crash.log and last-stage.txt
+        after reproducing the issue. Mode catalog logs include slot IDs, layout and
+        bounded binary header prefixes; they should stay private unless shared intentionally.
         For a native iOS .ips report, use Settings -> Privacy & Security ->
         Analytics & Improvements -> Analytics Data. Apps cannot normally read
         their own iOS system crash reports.
@@ -70,9 +78,8 @@ final class BoseDiagnostics {
         Do not delete Logs until you have collected the relevant files.
         """
         let help = logsDirectory.appendingPathComponent("README.txt")
-        if !fm.fileExists(atPath: help.path) {
-            try? readme.write(to: help, atomically: true, encoding: .utf8)
-        }
+        // Overwrite the README when upgrading from older versions.
+        try? readme.write(to: help, atomically: true, encoding: .utf8)
 
         event("APP", "Diagnostic logging initialized; dir=" + logsDirectory.path)
         event("APP", "Bundle=" + (Bundle.main.bundleIdentifier ?? "(unknown)") +
@@ -80,18 +87,36 @@ final class BoseDiagnostics {
         if let oldState,
            oldState.trimmingCharacters(in: .whitespacesAndNewlines) == "active" {
             event("WARNING", "Previous session ended while active; could be crash, force-close or system termination.")
+            if let oldStage {
+                event("WARNING", "Previous last stage: " + oldStage.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
         }
+        checkpoint("app.initialized", detail: "logging ready")
         setLifecycle("active")
     }
 
-    /// Flushes each line to disk, including lines written just before a crash.
+    /// Flush each line to the guest app data directory, with millisecond time
+    /// and a monotonic ordinal to distinguish nearby startup operations.
     func event(_ category: String, _ detail: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        sequence &+= 1
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let timestamp = formatter.string(from: Date())
         let trimmed = detail.replacingOccurrences(of: "\n", with: " ⏎ ")
             .replacingOccurrences(of: "\r", with: " ")
-        let line = "[" + timestamp + "] [" + category + "] " + trimmed + "\n"
+        let line = "[" + timestamp + "] [#" + String(sequence) + "] [" + category + "] " + trimmed + "\n"
         line.withCString { pointer in
             BoseDiagnosticsWrite(pointer, line.utf8.count)
+        }
+    }
+
+    func checkpoint(_ stage: String, detail: String = "") {
+        event("CHECKPOINT", stage + (detail.isEmpty ? "" : " | " + detail))
+        let value = stage + (detail.isEmpty ? "" : " | " + detail) + "\n"
+        do {
+            try value.write(to: lastStageURL, atomically: true, encoding: .utf8)
+        } catch {
+            event("LOG WARNING", "Could not write last-stage.txt: " + error.localizedDescription)
         }
     }
 
