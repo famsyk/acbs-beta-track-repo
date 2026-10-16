@@ -9,6 +9,10 @@ on:
       - bose-control-custom/**
   workflow_dispatch:
 
+concurrency:
+  group: bose-control-logs-build
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
