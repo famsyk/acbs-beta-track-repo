@@ -1,0 +1,161 @@
+name: Build Bose Control Plus BLE Auth Fix
+
+on:
+  push:
+    branches:
+      - build/bose-control-security-fix-20261016
+    paths:
+      - .github/workflows/build-bose-control-security.yml
+      - bose-control-custom/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - name: Checkout custom source
+        uses: actions/checkout@v4
+        with:
+          path: customization
+          persist-credentials: false
+
+      - name: Checkout pinned Bose iOS upstream
+        uses: actions/checkout@v4
+        with:
+          repository: jpita/bose-headphones-control
+          ref: c004ce069944dbd1d04d27754730e8731e45fd84
+          path: upstream
+          persist-credentials: false
+
+      - name: Apply diagnostics and enhanced UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in App.swift ContentView.swift BoseBMAP.swift BoseController.swift BoseBLETransport.swift BoseDiagnostics.swift BoseCrashSignal.c BoseDiagnosticsBridge.h; do
+            test -s "customization/bose-control-custom/$file"
+            cp "customization/bose-control-custom/$file" "upstream/native-ios/BoseHeadphonesControl/$file"
+          done
+          cp "customization/bose-control-custom/project.pbxproj" "upstream/native-ios/BoseHeadphonesControl.xcodeproj/project.pbxproj"
+          echo "Applied all diagnostics files and Xcode project references"
+
+      - name: Validate Xcode project
+        shell: bash
+        run: |
+          plutil -lint "upstream/native-ios/BoseHeadphonesControl.xcodeproj/project.pbxproj"
+          xcodebuild -version
+          xcodebuild -list -project "upstream/native-ios/BoseHeadphonesControl.xcodeproj"
+
+      - name: Build arm64 iPhone app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project upstream/native-ios/BoseHeadphonesControl.xcodeproj \
+            -scheme BoseHeadphonesControl \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/bose-logs-ios" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            clean build
+
+      - name: Package validated IPA and complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/bose-logs-ios/Build/Products/Release-iphoneos/BoseHeadphonesControl.app"
+          test -s "$APP/BoseHeadphonesControl"
+          test -s "$APP/Info.plist"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload" "$GITHUB_WORKSPACE/output"
+          /usr/bin/ditto "$APP" "$RUNNER_TEMP/ipa/Payload/BoseHeadphonesControl.app"
+          codesign --force --deep --sign - --timestamp=none "$RUNNER_TEMP/ipa/Payload/BoseHeadphonesControl.app"
+          codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/ipa/Payload/BoseHeadphonesControl.app"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/output/Bose-Control-Plus-AuthFix-unsigned.ipa" Payload)
+          unzip -t "$GITHUB_WORKSPACE/output/Bose-Control-Plus-AuthFix-unsigned.ipa" | tail -1
+
+          mkdir -p "$RUNNER_TEMP/source/Bose-Control-Plus-AuthFix-Source"
+          rsync -a --exclude='.git' "upstream/" "$RUNNER_TEMP/source/Bose-Control-Plus-AuthFix-Source/"
+          SRC="$RUNNER_TEMP/source/Bose-Control-Plus-AuthFix-Source"
+          mkdir -p "$SRC/bose-control-custom"
+          cp customization/bose-control-custom/*.swift "$SRC/bose-control-custom/"
+          cp customization/bose-control-custom/*.c "$SRC/bose-control-custom/"
+          cp customization/bose-control-custom/*.h "$SRC/bose-control-custom/"
+          cp customization/bose-control-custom/project.pbxproj "$SRC/bose-control-custom/"
+          mkdir -p "$SRC/.github/workflows"
+          cp customization/.github/workflows/build-bose-control-security.yml "$SRC/.github/workflows/"
+
+          cat > "$SRC/README_LOGS_JA.md" <<'EOF'
+          # Bose Control Plus 1.1.2 — BLE認証エラー対応・ログ保存版
+
+          クラッシュ診断ログに加え、BLEの暗号化・認証不足を検出するiPhoneアプリです。
+          iOS 17以降、arm64向け。署名してLiveContainerへインポートしてください。
+          
+          ## 認証不足への対処
+          1. iPhoneのBluetooth設定でBoseイヤホンの接続を確認。
+          2. Bose公式アプリでイヤホンのセットアップを完了。
+          3. このアプリから再接続し、Logs/app.logを確認。
+          4. まだ失敗する場合は通常インストールで再現するか確認。
+          ※ iOSが暗号化を許可しない場合、OSSアプリ側では強制的に解除できません。
+
+          ## ログの保存場所（アプリ用データフォルダ直下）
+          Data/Logs/app.log
+          Data/Logs/crash.log
+          Data/Logs/last-state.txt
+          Data/Logs/README.txt
+          Data/Logs/app-previous.log （app.logが2MBを超えてローテーションしたとき）
+
+          通常はLiveContainerでアプリを長押し → 設定/コンテナ → データフォルダを開く
+          → Logs。DocumentsやLibraryではなく、Dataの直下です。
+          アプリ画面のDevice → Logs / クラッシュ診断からログを共有することもできます。
+
+          アプリ初期化から起動・Bluetooth・BMAP送受信メタデータ・設定操作を記録します。
+          生のBLEペイロードはプライバシーのため記録しません。
+          SIGABRT/SEGV/BUS/ILL/TRAP/FPEのシグナル番号やObjective-C例外はcrash.logに記録する
+          最善努力方式です。Swiftのクラッシュ、iOSのメモリ不足終了・強制終了、
+          LiveContainerがゲストアプリ起動前に落ちた場合は必ずしも記録されません。
+          iOSのフルクラッシュレポートが必要なときは
+          設定 → プライバシーとセキュリティ → 解析と改善 → 解析データで .ips を取得します。
+
+          Xcodeプロジェクト: native-ios/BoseHeadphonesControl.xcodeproj
+          Scheme: BoseHeadphonesControl
+          ソース構成: 元プロジェクトに診断ファイルを適用済み（追加差分はbose-control-custom）。
+
+          元OSS: https://github.com/jpita/bose-headphones-control
+          元コミット: c004ce069944dbd1d04d27754730e8731e45fd84
+          ライセンス: 上流のLICENSE（MIT）を同梱。
+          EOF
+
+          cat > "$SRC/SOURCE_PROVENANCE.txt" <<EOF
+          Original upstream SHA: c004ce069944dbd1d04d27754730e8731e45fd84
+          Custom revision SHA: $GITHUB_SHA
+          Built via: $GITHUB_WORKFLOW
+          UTC: $(date -u +'%FT%TZ')
+          Diagnostics directory: NSHomeDirectory()/Logs
+          EOF
+
+          (cd "$RUNNER_TEMP/source" && zip -qry "$GITHUB_WORKSPACE/output/Bose-Control-Plus-AuthFix-Source.zip" Bose-Control-Plus-AuthFix-Source)
+          unzip -t "$GITHUB_WORKSPACE/output/Bose-Control-Plus-AuthFix-Source.zip" | tail -1
+
+          echo "App version: 1.1.2 (4)" > "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Upstream SHA: c004ce069944dbd1d04d27754730e8731e45fd84" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Custom SHA: $GITHUB_SHA" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Architecture: $(lipo -archs "$APP/BoseHeadphonesControl")" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Xcode: $(xcodebuild -version | tr '\n' ' ')" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "UTC: $(date -u +'%FT%TZ')" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          (cd "$GITHUB_WORKSPACE/output" && shasum -a 256 Bose-Control-Plus-AuthFix-unsigned.ipa Bose-Control-Plus-AuthFix-Source.zip > SHA256SUMS.txt)
+          ls -lh "$GITHUB_WORKSPACE/output"
+
+      - name: Upload IPA and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bose-Control-Plus-AuthFix-IPA-and-Source
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
