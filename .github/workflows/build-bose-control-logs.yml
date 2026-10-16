@@ -92,7 +92,7 @@ jobs:
           cp customization/.github/workflows/build-bose-control-logs.yml "$SRC/.github/workflows/"
 
           cat > "$SRC/README_LOGS_JA.md" <<'EOF'
-          # Bose Control Plus 1.1.1 — LiveContainer ログ保存版
+          # Bose Control Plus 1.2.0 — LiveContainer ログ保存 + iOS BLE再ペアリング版
 
           旧版のBose Control Plusにクラッシュ診断ログを組み込んだiPhoneアプリです。
           iOS 17以降、arm64向け。署名してLiveContainerへインポートしてください。
@@ -136,7 +136,7 @@ jobs:
           (cd "$RUNNER_TEMP/source" && zip -qry "$GITHUB_WORKSPACE/output/Bose-Control-Plus-Logs-Source.zip" Bose-Control-Plus-Logs-Source)
           unzip -t "$GITHUB_WORKSPACE/output/Bose-Control-Plus-Logs-Source.zip" | tail -1
 
-          echo "App version: 1.1.1 (3)" > "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "App version: 1.2.0 (4)" > "$GITHUB_WORKSPACE/output/build-info.txt"
           echo "Upstream SHA: c004ce069944dbd1d04d27754730e8731e45fd84" >> "$GITHUB_WORKSPACE/output/build-info.txt"
           echo "Custom SHA: $GITHUB_SHA" >> "$GITHUB_WORKSPACE/output/build-info.txt"
           echo "Architecture: $(lipo -archs "$APP/BoseHeadphonesControl")" >> "$GITHUB_WORKSPACE/output/build-info.txt"
