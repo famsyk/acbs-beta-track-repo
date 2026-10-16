@@ -14,6 +14,7 @@
 		A10000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* Assets.xcassets */; };
 		A10000000000000000000007 /* BoseDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* BoseDiagnostics.swift */; };
 		A10000000000000000000008 /* BoseCrashSignal.c in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* BoseCrashSignal.c */; };
+		A10000000000000000000009 /* BoseAccessorySetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* BoseAccessorySetup.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		A20000000000000000000009 /* BoseDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoseDiagnostics.swift; sourceTree = "<group>"; };
 		A2000000000000000000000A /* BoseCrashSignal.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BoseCrashSignal.c; sourceTree = "<group>"; };
 		A2000000000000000000000B /* BoseDiagnosticsBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BoseDiagnosticsBridge.h; sourceTree = "<group>"; };
+		A2000000000000000000000C /* BoseAccessorySetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoseAccessorySetup.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +56,7 @@
 				A20000000000000000000009 /* BoseDiagnostics.swift */,
 				A2000000000000000000000A /* BoseCrashSignal.c */,
 				A2000000000000000000000B /* BoseDiagnosticsBridge.h */,
+				A2000000000000000000000C /* BoseAccessorySetup.swift */,
 				A20000000000000000000008 /* Assets.xcassets */,
 				A20000000000000000000004 /* Info.plist */,
 			);
@@ -124,6 +127,7 @@
 				A10000000000000000000005 /* BoseController.swift in Sources */,
 				A10000000000000000000007 /* BoseDiagnostics.swift in Sources */,
 				A10000000000000000000008 /* BoseCrashSignal.c in Sources */,
+				A10000000000000000000009 /* BoseAccessorySetup.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
