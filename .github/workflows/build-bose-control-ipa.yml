@@ -1,0 +1,75 @@
+name: Build Bose Control unsigned iOS IPA
+
+on:
+  push:
+    branches:
+      - build/bose-control-ios-ipa-20261016
+    paths:
+      - .github/workflows/build-bose-control-ipa.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Fetch pinned Bose Headphones Control source
+        uses: actions/checkout@v4
+        with:
+          repository: jpita/bose-headphones-control
+          ref: c004ce069944dbd1d04d27754730e8731e45fd84
+          persist-credentials: false
+
+      - name: Show build environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Build device app without Apple provisioning
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project native-ios/BoseHeadphonesControl.xcodeproj \
+            -scheme BoseHeadphonesControl \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/bose-ios-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            clean build
+
+      - name: Package and validate IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/bose-ios-derived/Build/Products/Release-iphoneos/BoseHeadphonesControl.app"
+          test -f "$APP/BoseHeadphonesControl"
+          mkdir -p "$RUNNER_TEMP/ipa-packaging/Payload" "$GITHUB_WORKSPACE/output"
+          /usr/bin/ditto "$APP" "$RUNNER_TEMP/ipa-packaging/Payload/BoseHeadphonesControl.app"
+          /usr/bin/codesign --force --deep --sign - --timestamp=none "$RUNNER_TEMP/ipa-packaging/Payload/BoseHeadphonesControl.app"
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/ipa-packaging/Payload/BoseHeadphonesControl.app"
+          (cd "$RUNNER_TEMP/ipa-packaging" && /usr/bin/zip -qry "$GITHUB_WORKSPACE/output/Bose-Control-unsigned.ipa" Payload)
+          /usr/bin/unzip -t "$GITHUB_WORKSPACE/output/Bose-Control-unsigned.ipa"
+          echo "Upstream: jpita/bose-headphones-control" > "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Commit: c004ce069944dbd1d04d27754730e8731e45fd84" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Xcode: $(xcodebuild -version | tr '\n' ' ')" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Architecture: $(lipo -archs "$APP/BoseHeadphonesControl")" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          echo "Built UTC: $(date -u +'%FT%TZ')" >> "$GITHUB_WORKSPACE/output/build-info.txt"
+          (cd "$GITHUB_WORKSPACE/output" && shasum -a 256 Bose-Control-unsigned.ipa > SHA256SUMS.txt)
+          cat "$GITHUB_WORKSPACE/output/build-info.txt"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bose-Control-unsigned-ipa
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
