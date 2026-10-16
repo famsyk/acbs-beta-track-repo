@@ -254,6 +254,56 @@ struct BMAPModeConfig: Equatable {
     }
 }
 
+/// Defensive decoder for the asynchronous 31.1/31.6 mode-list stream.
+/// Retransmitted modes and duplicate indices must never be passed to
+/// Dictionary(uniqueKeysWithValues:) or SwiftUI's ForEach as duplicate IDs.
+enum BMAPModeCatalog {
+    static func decode(
+        _ packets: [BMAPPacket],
+        log: (String) -> Void = { _ in }
+    ) -> [BMAPModeConfig] {
+        var byIndex: [Int: BMAPModeConfig] = [:]
+        var statuses = 0
+        var skipped = 0
+        var duplicates = 0
+
+        log("START packets=\(packets.count)")
+        for (ordinal, packet) in packets.prefix(128).enumerated() {
+            let header = "packet=\(ordinal) block=\(packet.functionBlock) function=\(packet.function) op=\(packet.operation) length=\(packet.payload.count)"
+            guard packet.functionBlock == 31,
+                  packet.function == 6,
+                  packet.operation == BMAPOperator.status.rawValue else {
+                log("IGNORE " + header)
+                continue
+            }
+            statuses += 1
+            let prefix = Data(packet.payload.prefix(12)).hex
+            guard let config = BMAPModeConfig.parse(packet.payload) else {
+                skipped += 1
+                log("INVALID " + header + " prefix=" + prefix)
+                continue
+            }
+            let flags = "slot=\(config.index) layout=\(config.layout) editable=\(config.editable) configured=\(config.configured) cnc=\(config.cncLevel) autoCNC=\(config.autoCNC) spatial=\(config.spatial) mask=\(config.mutableMask)"
+            if let old = byIndex[config.index] {
+                duplicates += 1
+                // Keep the newest report for a slot; duplicate messages are
+                // legitimate in some firmware / after retransmission.
+                log("DUPLICATE " + header + " " + flags + " oldLayout=\(old.layout) replacing=latest prefix=" + prefix)
+            } else {
+                log("DECODE " + header + " " + flags + " nameBytes=\(config.name.utf8.count) prefix=" + prefix)
+            }
+            byIndex[config.index] = config
+        }
+        if packets.count > 128 {
+            log("TRUNCATED input packet limit=128 excess=\(packets.count - 128)")
+        }
+
+        let modes = byIndex.values.sorted { $0.index < $1.index }
+        log("COMPLETE statusPackets=\(statuses) uniqueSlots=\(modes.count) duplicates=\(duplicates) invalid=\(skipped) indices=\(modes.map { $0.index })")
+        return modes
+    }
+}
+
 func decodeBMAPString<S: Sequence>(_ bytes: S) -> String where S.Element == UInt8 {
     let terminated = Array(bytes).prefix { $0 != 0 }
     return String(decoding: terminated, as: UTF8.self)
