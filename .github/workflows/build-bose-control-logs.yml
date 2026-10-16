@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for file in App.swift ContentView.swift BoseBMAP.swift BoseController.swift BoseBLETransport.swift BoseDiagnostics.swift BoseCrashSignal.c BoseDiagnosticsBridge.h; do
+          for file in App.swift ContentView.swift BoseBMAP.swift BoseController.swift BoseBLETransport.swift BoseDiagnostics.swift BoseCrashSignal.c BoseDiagnosticsBridge.h BoseAccessorySetup.swift Info.plist; do
             test -s "customization/bose-control-custom/$file"
             cp "customization/bose-control-custom/$file" "upstream/native-ios/BoseHeadphonesControl/$file"
           done
