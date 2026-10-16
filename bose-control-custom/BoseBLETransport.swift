@@ -6,6 +6,7 @@ enum BoseBLEError: LocalizedError {
     case connectionFailed(String)
     case notConnected
     case busy
+    case pairingRequired
     case timeout(String)
 
     var errorDescription: String? {
@@ -14,6 +15,7 @@ enum BoseBLEError: LocalizedError {
         case let .connectionFailed(reason): return "Could not connect to Bose BLE: \(reason)"
         case .notConnected: return "The headphones are not connected."
         case .busy: return "Another headphone command is still running."
+        case .pairingRequired: return "iOS BLE pairing is required. Open Device → BLE pairing / re-authentication."
         case let .timeout(operation): return "Timed out while \(operation)."
         }
     }
@@ -33,7 +35,7 @@ final class BoseBLETransport: NSObject, BoseTransport {
     private static let serviceUUID = CBUUID(string: "FEBE")
     private static let secureUUID = CBUUID(string: "C65B8F2F-AEE2-4C89-B758-BC4892D6F2D8")
 
-    private var central: CBCentralManager!
+    private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var characteristic: CBCharacteristic?
     private var connectionContinuation: CheckedContinuation<Void, Error>?
@@ -59,13 +61,31 @@ final class BoseBLETransport: NSObject, BoseTransport {
 
     override init() {
         super.init()
+        makeCentralManager()
+    }
+
+    private func makeCentralManager() {
+        guard central == nil else { return }
         BoseDiagnostics.shared.event("BLE", "CoreBluetooth manager initialising")
         central = CBCentralManager(delegate: self, queue: .main)
+    }
+
+    func prepareForAccessorySetup() {
+        BoseDiagnostics.shared.event("BLE", "releasing CoreBluetooth manager for AccessorySetupKit")
+        closeLink()
+        central?.delegate = nil
+        central = nil
+    }
+
+    func restoreAfterAccessorySetup() {
+        BoseDiagnostics.shared.event("BLE", "restoring CoreBluetooth manager after AccessorySetupKit")
+        makeCentralManager()
     }
 
     func connect() async throws {
         BoseDiagnostics.shared.event("BLE", "connect() requested, ready=\(isReady)")
         if isReady { return }
+        makeCentralManager()
         closeLink()
         try await withCheckedThrowingContinuation { continuation in
             connectionContinuation = continuation
@@ -112,7 +132,13 @@ final class BoseBLETransport: NSObject, BoseTransport {
                         try await self.write(frame, peripheral: peripheral, characteristic: characteristic)
                     }
                 } catch {
-                    self.finishPending(id: id, result: .failure(error))
+                    let nsError = error as NSError
+                    if nsError.domain == "CBATTErrorDomain" && (nsError.code == 5 || nsError.code == 15) {
+                        BoseDiagnostics.shared.event("BLE SECURITY", "protected characteristic requires iOS BLE pairing; ATT code=\(nsError.code)")
+                        self.finishPending(id: id, result: .failure(BoseBLEError.pairingRequired))
+                    } else {
+                        self.finishPending(id: id, result: .failure(error))
+                    }
                 }
             }
         }
@@ -120,6 +146,10 @@ final class BoseBLETransport: NSObject, BoseTransport {
 
     private func beginScanIfPossible() {
         guard connectionContinuation != nil else { return }
+        guard let central else {
+            BoseDiagnostics.shared.event("BLE", "scan skipped: CoreBluetooth manager is released")
+            return
+        }
         BoseDiagnostics.shared.event("BLE", "scan decision Bluetooth state=\(central.state.rawValue)")
         switch central.state {
         case .poweredOn: central.scanForPeripherals(withServices: [Self.serviceUUID])
@@ -156,7 +186,7 @@ final class BoseBLETransport: NSObject, BoseTransport {
         connectionContinuation = nil
         connectionTimeout?.cancel()
         connectionTimeout = nil
-        central.stopScan()
+        central?.stopScan()
         continuation.resume(with: result)
     }
 
