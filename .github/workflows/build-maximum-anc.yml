@@ -1,0 +1,156 @@
+name: Build Bose Control Plus Maximum ANC 1.3.0
+
+on:
+  push:
+    branches: [build/bose-maximum-anc-20261018]
+    paths: [.github/workflows/build-maximum-anc.yml, anc-fix/**]
+  workflow_dispatch:
+
+concurrency:
+  group: bose-maximum-anc-130
+  cancel-in-progress: true
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: customization
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: jpita/bose-headphones-control
+          ref: c004ce069944dbd1d04d27754730e8731e45fd84
+          path: upstream
+          persist-credentials: false
+      - name: Assemble pinned 1.2.1 baseline and apply maximum ANC changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in App.swift ContentView.swift BoseBMAP.swift BoseController.swift BoseBLETransport.swift BoseDiagnostics.swift BoseCrashSignal.c BoseDiagnosticsBridge.h BoseAccessorySetup.swift Info.plist; do
+            cp "customization/bose-control-custom/$f" "upstream/native-ios/BoseHeadphonesControl/$f"
+          done
+          cp customization/bose-control-custom/project.pbxproj upstream/native-ios/BoseHeadphonesControl.xcodeproj/project.pbxproj
+          python3 customization/anc-fix/apply.py upstream
+          mkdir -p output
+          plutil -lint upstream/native-ios/BoseHeadphonesControl.xcodeproj/project.pbxproj
+          xcodebuild -version
+      - name: Run parser, Quiet, cancellation, and actual-controller regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          BMAP=upstream/native-ios/BoseHeadphonesControl/BoseBMAP.swift
+          swiftc -swift-version 5 -O "$BMAP" customization/bose-control-custom/tests/ModeCatalogTests.swift -o "$RUNNER_TEMP/catalog-tests"
+          "$RUNNER_TEMP/catalog-tests" | tee output/test-results.txt
+          swiftc -swift-version 5 -O "$BMAP" customization/anc-fix/QuietTests.swift -o "$RUNNER_TEMP/quiet-tests"
+          "$RUNNER_TEMP/quiet-tests" | tee -a output/test-results.txt
+          swiftc -swift-version 5 -O "$BMAP" upstream/native-ios/BoseHeadphonesControl/BoseController.swift customization/anc-fix/ControllerTests.swift -o "$RUNNER_TEMP/controller-tests"
+          "$RUNNER_TEMP/controller-tests" | tee -a output/test-results.txt
+      - name: Build iPhone arm64 Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project upstream/native-ios/BoseHeadphonesControl.xcodeproj \
+            -scheme BoseHeadphonesControl -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/bose-maximum-build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+            DEBUG_INFORMATION_FORMAT=dwarf-with-dsym clean build > output/xcodebuild.log 2>&1 || { tail -180 output/xcodebuild.log; exit 1; }
+          tail -5 output/xcodebuild.log
+      - name: Package verified IPA, complete standalone source, and symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRODUCTS="$RUNNER_TEMP/bose-maximum-build/Build/Products/Release-iphoneos"
+          APP="$PRODUCTS/BoseHeadphonesControl.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = 1.3.0
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = 6
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          ditto "$APP" "$RUNNER_TEMP/ipa/Payload/BoseHeadphonesControl.app"
+          codesign --force --deep --sign - --timestamp=none "$RUNNER_TEMP/ipa/Payload/BoseHeadphonesControl.app"
+          codesign --verify --deep --strict "$RUNNER_TEMP/ipa/Payload/BoseHeadphonesControl.app"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/output/Bose-Control-Plus-1.3.0-MaxANC.ipa" Payload)
+          unzip -t output/Bose-Control-Plus-1.3.0-MaxANC.ipa | tail -1
+
+          SRC="$RUNNER_TEMP/source/Bose-Control-Plus-1.3.0-Source"
+          mkdir -p "$SRC"
+          rsync -a --exclude='.git' upstream/ "$SRC/"
+          cp -R customization/anc-fix "$SRC/anc-fix"
+          mkdir -p "$SRC/bose-control-custom/tests"
+          cp customization/bose-control-custom/tests/*.swift "$SRC/bose-control-custom/tests/"
+          # The exported project is already patched. Its standalone workflow
+          # builds the checked-in native source rather than reapplying the patch.
+          rm -rf "$SRC/.github/workflows"
+          mkdir -p "$SRC/.github/workflows"
+          cat > "$SRC/.github/workflows/build-ios.yml" <<'YML'
+          name: Build standalone Bose Control
+          on: workflow_dispatch
+          permissions:
+            contents: read
+          jobs:
+            ios:
+              runs-on: macos-26
+              steps:
+                - uses: actions/checkout@v4
+                - run: |
+                    xcodebuild -project native-ios/BoseHeadphonesControl.xcodeproj -scheme BoseHeadphonesControl -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' build
+                    mkdir -p package/Payload
+                    cp -R build/Build/Products/Release-iphoneos/BoseHeadphonesControl.app package/Payload/
+                    codesign --force --deep --sign - --timestamp=none package/Payload/BoseHeadphonesControl.app
+                    cd package && zip -qry Bose-Control.ipa Payload
+                - uses: actions/upload-artifact@v4
+                  with:
+                    name: Bose-Control-IPA
+                    path: package/Bose-Control.ipa
+          YML
+          cat > "$SRC/README_MAX_ANC_JA.md" <<'DOC'
+          # Bose Control Plus 1.3.0 (6)
+
+          ## インストール・操作
+          LiveContainerで既存アプリのIPAを置き換えてください。既存Data/Logsは消さないでください。
+          画面上部の「Quiet」「最大ANCを強制適用」は全タブで常時表示します。
+          処理中のボタン操作は1件にまとめて優先待機し、通信の多重実行を防ぎます。
+          「最大ANC固定」はこの版では初期ON、変更は端末内に保存します。
+          接続時・画面復帰時・前景で約8秒ごとに状態を読み、変更されていればQuietに戻します。
+          固定ONの間はANCを弱めるアプリ内操作を停止します。EQやログ共有は利用できます。
+          アプリ停止中の常時監視や、ハードウェア限界を超えるANC増幅は行いません。
+
+          ## 修正内容
+          - キャンセルされたモード受信タイマーが早期完了する不具合を修正。
+          - BLE通知の値をコールバック到着時に取得し、後続通知による上書きを回避。
+          - 同一接続中の部分的なモード一覧で既知のQuietを消さない。
+          - モード一覧に依存せず、確認済みの工場Quietスロット0へ切り替える。
+          - モードと取得可能なANC設定を読み返し、未確認を成功扱いしない。
+          - 既存Data/Logsログ・認証処理・重複モード対策を維持。
+
+          ## ビルド
+          native-ios/BoseHeadphonesControl.xcodeproj をXcodeで開いてください。
+          ソースは適用済みです。anc-fix/apply.pyをこのソースへ再実行する必要はありません。
+          .github/workflows/build-ios.ymlはこのソースを直接ビルドします。
+          anc-fix内のスクリプトは固定された1.2.1のベースに対する変更履歴です。
+          テストは模擬Bluetoothであり、Bose実機での動作確認とは異なります。
+          DOC
+          printf 'Upstream: c004ce069944dbd1d04d27754730e8731e45fd84\nBaseline: bebc891475686534ed00aec663592b1f2f862a67\nCustom: %s\nRun: %s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > "$SRC/SOURCE_PROVENANCE.txt"
+          (cd "$RUNNER_TEMP/source" && zip -qry "$GITHUB_WORKSPACE/output/Bose-Control-Plus-1.3.0-Source.zip" Bose-Control-Plus-1.3.0-Source)
+          DSYM="$PRODUCTS/BoseHeadphonesControl.app.dSYM"
+          test -d "$DSYM"
+          xcrun dwarfdump --uuid "$DSYM" > output/dSYM-UUID.txt
+          (cd "$PRODUCTS" && zip -qry "$GITHUB_WORKSPACE/output/Bose-Control-Plus-1.3.0-dSYM.zip" BoseHeadphonesControl.app.dSYM)
+          printf 'Version: 1.3.0 (6)\nCustom: %s\nRun: %s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > output/build-info.txt
+          xcodebuild -version >> output/build-info.txt
+          lipo -archs "$APP/BoseHeadphonesControl" >> output/build-info.txt
+          (cd output && shasum -a 256 *.ipa *Source.zip *dSYM.zip > SHA256SUMS.txt)
+      - name: Upload build products and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bose-Control-Plus-1.3.0-MaxANC
+          path: output/
+          if-no-files-found: error
+          retention-days: 14
