@@ -16,14 +16,14 @@
       "category": "utilities",
       "versions": [
         {
-          "version": "2.3.1b",
-          "date": "2026-10-09T13:00:00-04:00",
-          "downloadURL": "https://cdn.altstore.io/file/altstore/apps/altstore/2_3_1_b.ipa",
-          "size": 40602347,
-          "sha256": "173534b619ed80cfd64396ef1d267a99d460b4cbc240b4d7b2d384d714df131f",
-          "buildVersion": "67",
-          "marketingVersion": "2.3.1b (67)",
-          "localizedDescription": "NEW\n\nRandomize Bundle IDs\n• New experimental feature in AltStore’s settings\n• Randomizes bundle IDs for sideloaded apps\n\nIMPROVED\n• Improved error messages for common Remote AltServer connection issues\n\nFIXED\n• Fixed 2FA codes not appearing when signing in (thanks @IgoSzaFIIT!)\n• Fixed \"BGTaskSchedulerErrorDomain error 3\" alert when setting up Remote AltServer on iOS 27+\n• Fixed apps not refreshing in background\n• Fixed asking to sign-in before setting up Remote AltServer",
+          "version": "2.3.1rc",
+          "date": "2026-10-21T11:00:00-04:00",
+          "downloadURL": "https://cdn.altstore.io/file/altstore/apps/altstore/2_3_1_rc.ipa",
+          "size": 40614509,
+          "sha256": "5174b5ed338b60b18e023e08aaa9e520083d96d169484a811c2c6fcaa35fb908",
+          "buildVersion": "71",
+          "marketingVersion": "2.3.1rc (71)",
+          "localizedDescription": "This update fixes error -80045 when sideloading and refreshing apps.\n\n⚠️ You may need to manually install this update by re-installing AltStore with AltServer. You do NOT need to delete AltStore first.",
           "minOSVersion": "17.4"
         }
       ],
