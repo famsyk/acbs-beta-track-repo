@@ -69,6 +69,35 @@ jobs:
           tar -xJf "$ARCHIVE" -C "$SOURCE_PARENT"
           test -f "$SOURCE_PARENT/MeshScope/project.yml"
           test -f "$SOURCE_PARENT/MeshScope/MeshScope/Renderer/MetalRenderer.swift"
+
+          # The compact build archive omits test fixtures. Keep only product targets
+          # in the CI manifest so SwiftPM does not validate an absent test path.
+          cat > "$SOURCE_PARENT/MeshScope/Core/Package.swift" <<'SWIFT'
+          // swift-tools-version: 5.9
+          import PackageDescription
+
+          let package = Package(
+              name: "MeshScopeCore",
+              platforms: [.iOS(.v17), .macOS(.v14)],
+              products: [
+                  .library(name: "MeshScopeCore", targets: ["MeshScopeCore"])
+              ],
+              targets: [
+                  .target(
+                      name: "CZlib",
+                      path: "Sources/CZlib",
+                      publicHeadersPath: "include",
+                      linkerSettings: [.linkedLibrary("z")]
+                  ),
+                  .target(
+                      name: "MeshScopeCore",
+                      dependencies: ["CZlib"],
+                      path: "Sources/MeshScopeCore"
+                  )
+              ]
+          )
+          SWIFT
+
           echo "SOURCE_ROOT=$SOURCE_PARENT/MeshScope" >> "$GITHUB_ENV"
 
       - name: Generate deterministic app icon
