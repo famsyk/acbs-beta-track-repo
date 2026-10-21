@@ -1,0 +1,217 @@
+name: MeshScope Unsigned IPA Release CI
+
+on:
+  push:
+    branches: [meshscope-unsigned-build]
+    paths: [.github/workflows/meshscope-unsigned-release-ci.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: meshscope-unsigned-release-ci
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: meshscope-unsigned-ci
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          swift --version
+
+      - name: Reconstruct and patch source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/src"
+          ARCHIVE="$RUNNER_TEMP/MeshScope-source.tar.xz"
+          cat ci/meshscope/source.xz.b64.part0{0,1,2,3,4} > "$RUNNER_TEMP/source.b64"
+          python3 - "$RUNNER_TEMP/source.b64" "$ARCHIVE" <<'PY'
+          import base64, pathlib, sys
+          raw = base64.b64decode(pathlib.Path(sys.argv[1]).read_bytes(), validate=True)
+          pathlib.Path(sys.argv[2]).write_bytes(raw)
+          print(f"decoded {len(raw)} bytes")
+          PY
+          echo '4265cf7d47e99a14685a1e5512f12a2cb24400033471cb6ba14908d7abe35d4d  '"$ARCHIVE" | shasum -a 256 -c -
+          mkdir -p "$ROOT"
+          tar -xJf "$ARCHIVE" -C "$ROOT"
+
+          cat > "$ROOT/MeshScope/Core/Package.swift" <<'SWIFT'
+          // swift-tools-version: 5.9
+          import PackageDescription
+          let package = Package(
+              name: "MeshScopeCore",
+              platforms: [.iOS(.v17), .macOS(.v14)],
+              products: [.library(name: "MeshScopeCore", targets: ["MeshScopeCore"])],
+              targets: [
+                  .target(name: "CZlib", path: "Sources/CZlib", publicHeadersPath: "include", linkerSettings: [.linkedLibrary("z")]),
+                  .target(name: "MeshScopeCore", dependencies: ["CZlib"], path: "Sources/MeshScopeCore")
+              ]
+          )
+          SWIFT
+
+          python3 - "$ROOT/MeshScope" <<'PY'
+          import math, pathlib, struct, sys, zlib
+          root = pathlib.Path(sys.argv[1])
+
+          shader = root / "MeshScope/Renderer/Shaders.metal"
+          shader_text = shader.read_text()
+          replacements = {
+              "SurfaceVertexGPU vertex = vertices[vertexID];": "SurfaceVertexGPU inputVertex = vertices[vertexID];",
+              "frame.viewProjection * vertex.position": "frame.viewProjection * inputVertex.position",
+              "vertex.position.xyz": "inputVertex.position.xyz",
+              "vertex.normal.xyz": "inputVertex.normal.xyz",
+              "vertex.color": "inputVertex.color",
+          }
+          for old, new in replacements.items():
+              if old not in shader_text:
+                  raise SystemExit(f"Metal patch target not found: {old}")
+              shader_text = shader_text.replace(old, new, 1)
+          shader.write_text(shader_text)
+
+          loader = root / "MeshScope/Services/SceneKitFallbackLoader.swift"
+          loader_text = loader.read_text()
+          old = """        } else if let cgColor = contents as? CGColor {
+              color = UIColor(cgColor: cgColor)
+          } else {
+              return .defaultSurface
+          }
+          """
+          new = """        } else if let contents {
+              let cfContents = contents as CFTypeRef
+              guard CFGetTypeID(cfContents) == CGColor.typeID else {
+                  return .defaultSurface
+              }
+              let cgColor = unsafeBitCast(cfContents, to: CGColor.self)
+              color = UIColor(cgColor: cgColor)
+          } else {
+              return .defaultSurface
+          }
+          """
+          if old not in loader_text:
+              raise SystemExit("SceneKit CGColor patch target not found")
+          loader.write_text(loader_text.replace(old, new, 1))
+
+          icon = root / "MeshScope/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+          width = height = 1024
+          rows = bytearray()
+          for y in range(height):
+              rows.append(0)
+              ny = (y - 512) / 512
+              for x in range(width):
+                  nx = (x - 512) / 512
+                  glow = max(0.0, 1.0 - math.hypot(nx, ny))
+                  grid = 14 if ((x // 96) + (y // 96)) % 2 == 0 else 0
+                  rows.extend((int(14 + 18*glow + grid/4), int(31 + 91*glow + grid), int(55 + 166*glow + grid)))
+          def chunk(kind, data):
+              return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+          png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(bytes(rows), 9)) + chunk(b"IEND", b"")
+          icon.write_bytes(png)
+          print("patched sources and generated icon")
+          PY
+
+          echo "SOURCE_ROOT=$ROOT/MeshScope" >> "$GITHUB_ENV"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build and validate unsigned IPA
+        id: compile
+        shell: bash
+        run: |
+          set +e
+          OUT="$RUNNER_TEMP/output"
+          LOG="$RUNNER_TEMP/xcodebuild.log"
+          STATUS_FILE="$RUNNER_TEMP/build-status.txt"
+          mkdir -p "$OUT"
+          cd "$SOURCE_ROOT"
+          chmod +x scripts/generate_project.sh scripts/build_unsigned_ipa.sh
+          ./scripts/build_unsigned_ipa.sh "$OUT" > "$LOG" 2>&1
+          STATUS=$?
+
+          if [[ $STATUS -eq 0 ]]; then
+            IPA="$OUT/MeshScope-unsigned.ipa"
+            VALIDATE="$RUNNER_TEMP/validate"
+            rm -rf "$VALIDATE"
+            mkdir -p "$VALIDATE"
+            unzip -t "$IPA" >> "$LOG" 2>&1 || STATUS=$?
+            if [[ $STATUS -eq 0 ]]; then
+              unzip -q "$IPA" -d "$VALIDATE" || STATUS=$?
+            fi
+            APP="$VALIDATE/Payload/MeshScope.app"
+            BIN="$APP/MeshScope"
+            if [[ $STATUS -eq 0 ]]; then
+              test -f "$BIN" || STATUS=$?
+            fi
+            if [[ $STATUS -eq 0 ]]; then
+              BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+              MIN_IOS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")
+              [[ "$BUNDLE_ID" == com.famsyk.MeshScope ]] || STATUS=91
+              [[ "$MIN_IOS" == 17.0 ]] || STATUS=92
+              if find "$APP" -type d -name _CodeSignature -print -quit | grep -q .; then STATUS=93; fi
+              if codesign -dv "$APP" >/dev/null 2>&1; then STATUS=94; fi
+            fi
+            if [[ $STATUS -eq 0 ]]; then
+              SHA=$(shasum -a 256 "$IPA" | awk '{print $1}')
+              shasum -a 256 "$IPA" > "$OUT/MeshScope-unsigned.ipa.sha256"
+              {
+                echo 'MeshScope unsigned IPA build'
+                echo "Bundle ID: $BUNDLE_ID"
+                echo "Minimum iOS: $MIN_IOS"
+                echo "Binary: $(file "$BIN")"
+                echo "IPA bytes: $(stat -f '%z' "$IPA")"
+                echo "SHA-256: $SHA"
+                echo 'Code signing: none'
+              } | tee "$OUT/build-report.txt" >> "$LOG"
+            fi
+          fi
+
+          if [[ $STATUS -eq 0 ]]; then
+            echo success > "$STATUS_FILE"
+          else
+            echo "failure:$STATUS" > "$STATUS_FILE"
+          fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Publish temporary diagnostic release
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+          git push origin ":refs/tags/$RELEASE_TAG" >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title 'MeshScope unsigned CI' --notes 'Temporary CI output.'
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/xcodebuild.log" "$RUNNER_TEMP/build-status.txt" --clobber
+          if [[ "${{ steps.compile.outputs.status }}" == 0 ]]; then
+            gh release upload "$RELEASE_TAG" \
+              "$RUNNER_TEMP/output/MeshScope-unsigned.ipa" \
+              "$RUNNER_TEMP/output/MeshScope-unsigned.ipa.sha256" \
+              "$RUNNER_TEMP/output/build-report.txt" \
+              "$RUNNER_TEMP/output/README.txt" \
+              --clobber
+          fi
+
+      - name: Require successful build
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS='${{ steps.compile.outputs.status }}'
+          if [[ "$STATUS" != 0 ]]; then
+            echo "xcodebuild or validation failed with status $STATUS" >&2
+            exit "$STATUS"
+          fi
