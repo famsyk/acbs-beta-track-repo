@@ -1,0 +1,156 @@
+name: MeshScope Unsigned IPA Fixed
+
+on:
+  push:
+    branches: [meshscope-unsigned-build]
+    paths: [.github/workflows/meshscope-unsigned-build-fixed.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/src"
+          ARCHIVE="$RUNNER_TEMP/MeshScope-source.tar.xz"
+          cat ci/meshscope/source.xz.b64.part0{0,1,2,3,4} > "$RUNNER_TEMP/source.b64"
+          python3 - "$RUNNER_TEMP/source.b64" "$ARCHIVE" <<'PY'
+          import base64, pathlib, sys
+          raw = base64.b64decode(pathlib.Path(sys.argv[1]).read_bytes(), validate=True)
+          pathlib.Path(sys.argv[2]).write_bytes(raw)
+          print(f"decoded {len(raw)} bytes")
+          PY
+          echo '4265cf7d47e99a14685a1e5512f12a2cb24400033471cb6ba14908d7abe35d4d  '"$ARCHIVE" | shasum -a 256 -c -
+          mkdir -p "$ROOT"
+          tar -xJf "$ARCHIVE" -C "$ROOT"
+
+          cat > "$ROOT/MeshScope/Core/Package.swift" <<'SWIFT'
+          // swift-tools-version: 5.9
+          import PackageDescription
+          let package = Package(
+              name: "MeshScopeCore",
+              platforms: [.iOS(.v17), .macOS(.v14)],
+              products: [.library(name: "MeshScopeCore", targets: ["MeshScopeCore"])],
+              targets: [
+                  .target(name: "CZlib", path: "Sources/CZlib", publicHeadersPath: "include", linkerSettings: [.linkedLibrary("z")]),
+                  .target(name: "MeshScopeCore", dependencies: ["CZlib"], path: "Sources/MeshScopeCore")
+              ]
+          )
+          SWIFT
+
+          python3 - "$ROOT/MeshScope" <<'PY'
+          import math, pathlib, struct, sys, zlib
+          root = pathlib.Path(sys.argv[1])
+
+          shader = root / "MeshScope/Renderer/Shaders.metal"
+          text = shader.read_text()
+          old = """    SurfaceVertexGPU vertex = vertices[vertexID];
+              SurfaceVarying output;
+              output.position = frame.viewProjection * vertex.position;
+              output.worldPosition = vertex.position.xyz;
+              output.normal = vertex.normal.xyz;
+              output.color = vertex.color;
+          """
+          new = """    SurfaceVertexGPU inputVertex = vertices[vertexID];
+              SurfaceVarying output;
+              output.position = frame.viewProjection * inputVertex.position;
+              output.worldPosition = inputVertex.position.xyz;
+              output.normal = inputVertex.normal.xyz;
+              output.color = inputVertex.color;
+          """
+          if old not in text:
+              raise SystemExit("Metal shader patch target not found")
+          shader.write_text(text.replace(old, new, 1))
+
+          icon = root / "MeshScope/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+          width = height = 1024
+          rows = bytearray()
+          for y in range(height):
+              rows.append(0)
+              ny = (y - 512) / 512
+              for x in range(width):
+                  nx = (x - 512) / 512
+                  glow = max(0.0, 1.0 - math.hypot(nx, ny))
+                  grid = 14 if ((x // 96) + (y // 96)) % 2 == 0 else 0
+                  rows.extend((int(14 + 18*glow + grid/4), int(31 + 91*glow + grid), int(55 + 166*glow + grid)))
+          def chunk(kind, data):
+              return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+          png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(bytes(rows), 9)) + chunk(b"IEND", b"")
+          icon.write_bytes(png)
+          print("patched Metal source and generated icon")
+          PY
+
+          echo "SOURCE_ROOT=$ROOT/MeshScope" >> "$GITHUB_ENV"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build unsigned device app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SOURCE_ROOT"
+          chmod +x scripts/generate_project.sh scripts/build_unsigned_ipa.sh
+          LOG="$RUNNER_TEMP/xcodebuild.log"
+          set +e
+          ./scripts/build_unsigned_ipa.sh "$RUNNER_TEMP/output" > "$LOG" 2>&1
+          STATUS=$?
+          set -e
+          if [[ $STATUS -ne 0 ]]; then
+            echo 'Compiler diagnostics:' >&2
+            grep -n -B 4 -A 8 -E '(^|[[:space:]])(error:|fatal error:)|\*\* BUILD FAILED \*\*' "$LOG" | tail -n 500 >&2 || tail -n 500 "$LOG" >&2
+            exit "$STATUS"
+          fi
+          tail -n 100 "$LOG"
+
+      - name: Validate unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/output"
+          IPA="$OUT/MeshScope-unsigned.ipa"
+          EXTRACTED="$RUNNER_TEMP/validate"
+          test -s "$IPA"
+          unzip -t "$IPA"
+          mkdir -p "$EXTRACTED"
+          unzip -q "$IPA" -d "$EXTRACTED"
+          APP="$EXTRACTED/Payload/MeshScope.app"
+          BIN="$APP/MeshScope"
+          test -f "$BIN"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          MIN_IOS=$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")
+          test "$BUNDLE_ID" = com.famsyk.MeshScope
+          test "$MIN_IOS" = 17.0
+          ! find "$APP" -type d -name _CodeSignature -print -quit | grep -q .
+          ! codesign -dv "$APP" >/dev/null 2>&1
+          SHA=$(shasum -a 256 "$IPA" | awk '{print $1}')
+          shasum -a 256 "$IPA" > "$OUT/MeshScope-unsigned.ipa.sha256"
+          {
+            echo 'MeshScope unsigned IPA build'
+            echo "Bundle ID: $BUNDLE_ID"
+            echo "Minimum iOS: $MIN_IOS"
+            echo "Binary: $(file "$BIN")"
+            echo "IPA bytes: $(stat -f '%z' "$IPA")"
+            echo "SHA-256: $SHA"
+            echo 'Code signing: none'
+          } | tee "$OUT/build-report.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MeshScope-unsigned-IPA
+          path: |
+            ${{ runner.temp }}/output/MeshScope-unsigned.ipa
+            ${{ runner.temp }}/output/MeshScope-unsigned.ipa.sha256
+            ${{ runner.temp }}/output/build-report.txt
+            ${{ runner.temp }}/output/README.txt
+          if-no-files-found: error
+          retention-days: 7
