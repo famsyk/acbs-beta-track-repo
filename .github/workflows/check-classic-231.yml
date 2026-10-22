@@ -30,7 +30,7 @@ jobs:
 
           opener = urllib.request.build_opener(OfficialRedirects())
           def get(url, limit=8*1024*1024):
-              request = urllib.request.Request(url, headers={'Cache-Control': 'no-cache', 'User-Agent': 'acbs-classic-231-check/1.0'})
+              request = urllib.request.Request(url, headers={'Cache-Control': 'no-cache', 'User-Agent': 'acbs-classic-231-check/1.1'})
               with opener.open(request, timeout=30) as response:
                   data = response.read(limit+1)
                   if len(data) > limit:
@@ -48,8 +48,8 @@ jobs:
                       report['officialListings'].append(row)
                       print('OFFICIAL_CLASSIC', json.dumps(row, ensure_ascii=False), flush=True)
 
-          # These two paths are explicit candidates, not assumed published releases.
-          for path in ('2_3_1_b', '2_3_1'):
+          # Explicit candidate paths, not assumed published releases. Include the new RC.
+          for path in ('2_3_1_rc', '2_3_1_b', '2_3_1'):
               base = 'https://altstore.io/adps/altstore-classic/'+path
               row = {'candidate': base}
               try:
