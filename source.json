@@ -69,17 +69,17 @@
         ]
       },
       "name": "AltStore Classic Beta",
-      "subtitle": "PALから導入・2.3rc (63)",
-      "localizedDescription": "公式の公開ADPを参照します。アプリ本体や署名は改変しません。実機でのインストールは未検証です。 PALで導入する版は2.3rc (63)です。IPA版の2.3.1rcとは配布物が異なります。",
+      "subtitle": "PALから導入・2.3.1rc (72)",
+      "localizedDescription": "公式の公開ADPを参照します。アプリ本体や署名は改変しません。実機でのインストールは未検証です。 PALで導入する版は2.3.1rc (72)です。IPA版の2.3.1rcとは配布物が異なります。",
       "versions": [
         {
-          "version": "2.3.4",
-          "buildVersion": "63",
-          "marketingVersion": "2.3rc (63)",
-          "date": "2026-09-14T11:00:00-04:00",
-          "localizedDescription": "NEW\n\nRemote AltServer Onboarding\n• New in-app guide to easily set up on-device sideloading\n• Get started in seconds with easy to follow instructions\n• Tap “Set-Up Remote AltServer” in settings\n\nOn-Device Pairing (iOS 27+)\n• Install and sideload apps without ever touching a computer!\n• Set up remote AltServer without manually pairing with AltServer\n\nIMPROVED\n• Improved remote AltServer reliability\n• No longer need to restart app after pairing with remote AltServer\n• Ignores “Couldn’t reach remote AltServer” error when refreshing apps in background without VPN\n\nFIXED\n• Fixed crash when refreshing multiple apps with local AltServer",
-          "downloadURL": "https://altstore.io/adps/altstore-classic/2_3_rc",
-          "size": 22477794,
+          "version": "2.3.6",
+          "buildVersion": "72",
+          "marketingVersion": "2.3.1rc (72)",
+          "date": "2026-10-23T14:00:00-04:00",
+          "localizedDescription": "NEW\n\nRandomize Bundle IDs\n• New experimental feature in AltStore’s settings\n• Randomizes bundle IDs for sideloaded apps\n\nIMPROVED\n• Improved error messages for common Remote AltServer connection issues\n\nFIXED\n• Fixed error -80045 when sideloading and refreshing apps\n• Fixed 2FA codes not appearing when signing in (thanks @IgoSzaFIIT!)\n• Fixed \"BGTaskSchedulerErrorDomain error 3\" alert when setting up Remote AltServer on iOS 27+\n• Fixed apps not refreshing in background\n• Fixed asking to sign-in before setting up Remote AltServer",
+          "downloadURL": "https://altstore.io/adps/altstore-classic/2_3_1_rc",
+          "size": 27277777,
           "minOSVersion": "17.4"
         }
       ]
@@ -91,6 +91,6 @@
     "classicIPALatest": "2.3.1rc",
     "deviceInstallation": "not-tested",
     "appleSignatureTrust": "not-validated-by-this-script",
-    "checks": "{\"com.rileytestut.AltStore.Beta\": {\"manifestSHA256\": \"6289a57b46ce53a3069158d656951f4fcb68d6b1e97e9d89b2d4e9b461c27530\", \"sampleAsset\": \"variant/33e387f5-448f-35c2-a94f-99c5ed114c22.ipa\", \"sampleSHA256\": \"0392cee9c659877b472e9c60ffa4a4a945f02bc3453a63a81dea78324cb88a64\", \"signatureSHA256\": \"6d79abf43a1f5fc4097def4b4ad3c8ac8a141554830d9b88ce9eb7a235290210\"}, \"io.altstore.AltStore.Beta\": {\"manifestSHA256\": \"4c37a3b45e98137ef98afedb40a27bfa742166ea18b5762532cb80d179bbd316\", \"sampleAsset\": \"variant/0a88c7f3-13d2-3ac4-8e1b-f7d4d06d9d41.ipa\", \"sampleSHA256\": \"ad174381ec0d88b88a6185ddd4e01c2e4925803cc27ca0bff8c326c944c6b01d\", \"signatureSHA256\": \"c37016896c42d693bb440ed9117aa4b404969606747bb0a5c337c5ee92ee30a4\"}}"
+    "checks": "{\"com.rileytestut.AltStore.Beta\": {\"manifestSHA256\": \"dadfaa6a90c3ad1be7dc42c75e74a40046c15ec6c9cd29959b63bfcd4bf41c88\", \"sampleAsset\": \"variant/bb90c769-b53b-3a5d-8841-ac7c639879d5.ipa\", \"sampleSHA256\": \"32a69c9ca685861363cd3ddaab99aea3d328f4d6e1bbcc7cf35512f785b2dab5\", \"signatureSHA256\": \"f1a198a195ef0a077705d11fa17cb502c9483b145edc02c60779b7499ba0ea24\"}, \"io.altstore.AltStore.Beta\": {\"manifestSHA256\": \"4c37a3b45e98137ef98afedb40a27bfa742166ea18b5762532cb80d179bbd316\", \"sampleAsset\": \"variant/0a88c7f3-13d2-3ac4-8e1b-f7d4d06d9d41.ipa\", \"sampleSHA256\": \"ad174381ec0d88b88a6185ddd4e01c2e4925803cc27ca0bff8c326c944c6b01d\", \"signatureSHA256\": \"c37016896c42d693bb440ed9117aa4b404969606747bb0a5c337c5ee92ee30a4\"}}"
   }
 }
