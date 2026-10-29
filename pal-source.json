@@ -70,7 +70,7 @@
       },
       "name": "AltStore Classic Beta",
       "subtitle": "PALから導入・2.3.1rc (72)",
-      "localizedDescription": "公式の公開ADPを参照します。アプリ本体や署名は改変しません。実機でのインストールは未検証です。 PALで導入する版は2.3.1rc (72)です。IPA版の2.3.1rcとは配布物が異なります。",
+      "localizedDescription": "公式の公開ADPを参照します。アプリ本体や署名は改変しません。実機でのインストールは未検証です。 PALで導入する版は2.3.1rc (72)です。IPA版の2.3.2bとは配布物が異なります。",
       "versions": [
         {
           "version": "2.3.6",
@@ -88,7 +88,7 @@
   "news": [],
   "userInfo": {
     "catalogVersion": "2",
-    "classicIPALatest": "2.3.1rc",
+    "classicIPALatest": "2.3.2b",
     "deviceInstallation": "not-tested",
     "appleSignatureTrust": "not-validated-by-this-script",
     "checks": "{\"com.rileytestut.AltStore.Beta\": {\"manifestSHA256\": \"dadfaa6a90c3ad1be7dc42c75e74a40046c15ec6c9cd29959b63bfcd4bf41c88\", \"sampleAsset\": \"variant/bb90c769-b53b-3a5d-8841-ac7c639879d5.ipa\", \"sampleSHA256\": \"32a69c9ca685861363cd3ddaab99aea3d328f4d6e1bbcc7cf35512f785b2dab5\", \"signatureSHA256\": \"f1a198a195ef0a077705d11fa17cb502c9483b145edc02c60779b7499ba0ea24\"}, \"io.altstore.AltStore.Beta\": {\"manifestSHA256\": \"4c37a3b45e98137ef98afedb40a27bfa742166ea18b5762532cb80d179bbd316\", \"sampleAsset\": \"variant/0a88c7f3-13d2-3ac4-8e1b-f7d4d06d9d41.ipa\", \"sampleSHA256\": \"ad174381ec0d88b88a6185ddd4e01c2e4925803cc27ca0bff8c326c944c6b01d\", \"signatureSHA256\": \"c37016896c42d693bb440ed9117aa4b404969606747bb0a5c337c5ee92ee30a4\"}}"
