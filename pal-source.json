@@ -69,17 +69,17 @@
         ]
       },
       "name": "AltStore Classic Beta",
-      "subtitle": "PALから導入・2.3.1rc (72)",
-      "localizedDescription": "公式の公開ADPを参照します。アプリ本体や署名は改変しません。実機でのインストールは未検証です。 PALで導入する版は2.3.1rc (72)です。IPA版の2.3.2bとは配布物が異なります。",
+      "subtitle": "PALから導入・2.3.2b",
+      "localizedDescription": "公式の公開ADPを参照します。アプリ本体や署名は改変しません。実機でのインストールは未検証です。 PALで導入する版は2.3.2bです。IPA版の2.3.2bとは配布物が異なります。",
       "versions": [
         {
-          "version": "2.3.6",
-          "buildVersion": "72",
-          "marketingVersion": "2.3.1rc (72)",
-          "date": "2026-10-23T14:00:00-04:00",
-          "localizedDescription": "NEW\n\nRandomize Bundle IDs\n• New experimental feature in AltStore’s settings\n• Randomizes bundle IDs for sideloaded apps\n\nIMPROVED\n• Improved error messages for common Remote AltServer connection issues\n\nFIXED\n• Fixed error -80045 when sideloading and refreshing apps\n• Fixed 2FA codes not appearing when signing in (thanks @IgoSzaFIIT!)\n• Fixed \"BGTaskSchedulerErrorDomain error 3\" alert when setting up Remote AltServer on iOS 27+\n• Fixed apps not refreshing in background\n• Fixed asking to sign-in before setting up Remote AltServer",
-          "downloadURL": "https://altstore.io/adps/altstore-classic/2_3_1_rc",
-          "size": 27277777,
+          "version": "2.3.7",
+          "buildVersion": "74",
+          "marketingVersion": "2.3.2b",
+          "date": "2026-11-02T14:00:00-04:00",
+          "localizedDescription": "This update fixes 503 and -80046 errors when sideloading and refreshing apps.\n\n⚠️ You may need to manually install this update by re-installing AltStore with AltServer. You do NOT need to delete AltStore first.",
+          "downloadURL": "https://altstore.io/adps/altstore-classic/2_3_2_b",
+          "size": 27251616,
           "minOSVersion": "17.4"
         }
       ]
@@ -91,6 +91,6 @@
     "classicIPALatest": "2.3.2b",
     "deviceInstallation": "not-tested",
     "appleSignatureTrust": "not-validated-by-this-script",
-    "checks": "{\"com.rileytestut.AltStore.Beta\": {\"manifestSHA256\": \"dadfaa6a90c3ad1be7dc42c75e74a40046c15ec6c9cd29959b63bfcd4bf41c88\", \"sampleAsset\": \"variant/bb90c769-b53b-3a5d-8841-ac7c639879d5.ipa\", \"sampleSHA256\": \"32a69c9ca685861363cd3ddaab99aea3d328f4d6e1bbcc7cf35512f785b2dab5\", \"signatureSHA256\": \"f1a198a195ef0a077705d11fa17cb502c9483b145edc02c60779b7499ba0ea24\"}, \"io.altstore.AltStore.Beta\": {\"manifestSHA256\": \"4c37a3b45e98137ef98afedb40a27bfa742166ea18b5762532cb80d179bbd316\", \"sampleAsset\": \"variant/0a88c7f3-13d2-3ac4-8e1b-f7d4d06d9d41.ipa\", \"sampleSHA256\": \"ad174381ec0d88b88a6185ddd4e01c2e4925803cc27ca0bff8c326c944c6b01d\", \"signatureSHA256\": \"c37016896c42d693bb440ed9117aa4b404969606747bb0a5c337c5ee92ee30a4\"}}"
+    "checks": "{\"com.rileytestut.AltStore.Beta\": {\"manifestSHA256\": \"3e0213109449cdc63e165a87b8475d385df0a794c24e215763b833e41ab81e49\", \"sampleAsset\": \"variant/93990412-3685-3eb9-91e3-381259f7640c.ipa\", \"sampleSHA256\": \"fe04e555602418171d67dc07ee8c79b1755763b8e26360816ee5dd3f0ccc7c7f\", \"signatureSHA256\": \"dba25f172640d7e7b47531d7fc34499b15fd4a7273e16457edf1ba5cb7b5fa2b\"}, \"io.altstore.AltStore.Beta\": {\"manifestSHA256\": \"4c37a3b45e98137ef98afedb40a27bfa742166ea18b5762532cb80d179bbd316\", \"sampleAsset\": \"variant/0a88c7f3-13d2-3ac4-8e1b-f7d4d06d9d41.ipa\", \"sampleSHA256\": \"ad174381ec0d88b88a6185ddd4e01c2e4925803cc27ca0bff8c326c944c6b01d\", \"signatureSHA256\": \"c37016896c42d693bb440ed9117aa4b404969606747bb0a5c337c5ee92ee30a4\"}}"
   }
 }
