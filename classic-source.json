@@ -16,14 +16,14 @@
       "category": "utilities",
       "versions": [
         {
-          "version": "2.3.2b",
-          "date": "2026-10-28T13:00:00-04:00",
-          "downloadURL": "https://cdn.altstore.io/file/altstore/apps/altstore/2_3_2_b.ipa",
-          "size": 40614869,
-          "sha256": "b7184f8c26a79a55540fda35f53a04154ef17116b64134f4091477b720283e39",
-          "buildVersion": "74",
-          "marketingVersion": "2.3.2b (74)",
-          "localizedDescription": "This update fixes 503 and -80046 errors when sideloading and refreshing apps.\n\n⚠️ You may need to manually install this update by re-installing AltStore with AltServer. You do NOT need to delete AltStore first.",
+          "version": "2.3.3b",
+          "date": "2026-11-09T13:00:00-04:00",
+          "downloadURL": "https://cdn.altstore.io/file/altstore/apps/altstore/2_3_3_b.ipa",
+          "size": 40615449,
+          "sha256": "2bab23840b8fc3fa4854c9c057ee89e117cce562f61533577cb2775c57fdf4fe",
+          "buildVersion": "76",
+          "marketingVersion": "2.3.3b (76)",
+          "localizedDescription": "This update fixes the 415 error when sideloading and refreshing apps.\n\n⚠️ You may need to manually install this update by re-installing AltStore with AltServer. You do NOT need to delete AltStore first.",
           "minOSVersion": "17.4"
         }
       ],
